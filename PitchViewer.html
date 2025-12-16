@@ -1,12 +1,38 @@
 <html>
 <head>
+    <style>
+        /* pulsing halo used to highlight a portal */
+        .pulse-halo {
+            animation: pulse-halo 1s ease-out infinite;
+            z-index: 99999 !important;
+            /* small extra visual hint */
+            box-shadow: 0 0 0 8px rgba(30,144,255,0.15);
+            border-radius: 12px;
+        }
+
+        @keyframes pulse-halo {
+            0% {
+                box-shadow: 0 0 0 0 rgba(30,144,255,0.9), 0 0 0 0 rgba(30,144,255,0.2);
+            }
+
+            70% {
+                box-shadow: 0 0 0 36px rgba(30,144,255,0), 0 0 0 12px rgba(30,144,255,0.12);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(30,144,255,0), 0 0 0 0 rgba(30,144,255,0);
+            }
+        }
+    </style>
 </head>
 <body>
     <img id="selectedpitch" src="" style="max-width:100%;" />
     <script>
+        var mapData = null;
+
         const images = [
-            "Pitches/combined-2025-12-16T17-53-34-903Z.png",
-            "Pitches/combined-2025-12-16T17-55-42-923Z.png"
+            "Pitches/combined-2025-12-16T19-56-00-605Z.png",
+            "Pitches/combined-2025-12-16T20-14-03-194Z.png"
         ];
         let currentIndex = 0;
         function showImage(index) {
@@ -37,7 +63,7 @@
                     .then(response => response.blob())
                     .then(blob => {
                         const reader = new FileReader();
-                        reader.onload = function() {
+                        reader.onload = function () {
                             const textChunks = [];
                             const data = reader.result;
                             // Find the mapJSON text chunk in the PNG data
@@ -62,7 +88,7 @@
                             if (mapJSONChunk) {
                                 alert(mapJSONChunk);
                                 const jsonString = mapJSONChunk.substring(8); // Remove "mapJSON" prefix and following null character
-                                const mapData = JSON.parse(jsonString);
+                                mapData = JSON.parse(jsonString);
                                 console.log('Portals:', mapData.portals);
                                 console.log('Chests:', mapData.chests);
                             } else {
@@ -71,6 +97,30 @@
                         };
                         reader.readAsArrayBuffer(blob);
                     });
+            }
+            // If the user presses the p key, pick a random portal from the mapData and highlight it on the image with a pulsing halo which lasts for 5 seconds before disappearing
+            else if (event.key === 'p') {
+                if (mapData && mapData.portals && mapData.portals.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * mapData.portals.length);
+                    const portal = mapData.portals[randomIndex];
+                    const img = document.getElementById('selectedpitch');
+                    const halo = document.createElement('div');
+                    halo.style.position = 'absolute';                    
+                    halo.style.borderRadius = '50%';
+                    halo.style.width = '50px';
+                    halo.style.height = '50px';
+                    // Get the portal offsetX and offsetY and scale them to the image size compared to the width of the image at its natural size
+                    var scale = img.width / img.naturalWidth;
+                    halo.style.left = ((portal.offsetX * scale)) + 'px';
+                    halo.style.top = ((portal.offsetY * scale)) + 'px';
+                    halo.classList.add('pulse-halo');
+                    document.body.appendChild(halo);
+                    setTimeout(() => {
+                        document.body.removeChild(halo);
+                    }, 5000);
+                } else {
+                    console.log('No portal data available.');
+                }
             }
         });
         // Initial display
