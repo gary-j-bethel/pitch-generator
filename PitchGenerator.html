@@ -106,29 +106,6 @@
             outline-offset: 0px;
         }
 
-        /* pulsing halo used to highlight a portal */
-        .pulse-halo {
-            animation: pulse-halo 1s ease-out infinite;
-            z-index: 99999 !important;
-            /* small extra visual hint */
-            box-shadow: 0 0 0 4px rgba(30,144,255,0.15);
-            border-radius: 6px;
-        }
-
-        @keyframes pulse-halo {
-            0% {
-                box-shadow: 0 0 0 0 rgba(30,144,255,0.9), 0 0 0 0 rgba(30,144,255,0.2);
-            }
-
-            70% {
-                box-shadow: 0 0 0 18px rgba(30,144,255,0), 0 0 0 6px rgba(30,144,255,0.12);
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(30,144,255,0), 0 0 0 0 rgba(30,144,255,0);
-            }
-        }
-
         /* Trash icon */
         #trash {
             position: fixed;
@@ -196,8 +173,6 @@
         <!-- save combined original-scale image -->
         <button id="saveCombinedBtn" type="button">Save combined original-scale image</button>
 
-        <!-- highlight random portal -->
-        <button id="highlightPortalBtn" type="button">Highlight random portal</button>
     </form>
 
     <div id="grid" aria-live="polite" role="region" aria-label="Generated grid"></div>
@@ -217,7 +192,6 @@
         const hideGridCheckbox = document.getElementById('hideGridCheckbox');
         const saveCombinedBtn = document.getElementById('saveCombinedBtn');
         const rotateSelectedBtn = document.getElementById('rotateSelectedBtn');
-        const highlightPortalBtn = document.getElementById('highlightPortalBtn');
 
         // store last-generated grid dimensions so snapping can use them
         let gridCols = 0;
@@ -240,10 +214,6 @@
         // z-index counters: normal and ontop
         let nextZ = 2000;
         let nextOntopZ = 100000;
-
-        // last highlighted portal bookkeeping
-        let _lastPortalTimeout = null;
-        let _lastHighlightedEl = null;
 
         // ---------------- initialize palette scaling ----------------
         function scalePaletteImages() {
@@ -688,47 +658,7 @@
                     snapTopLeftToGrid(img);
                 });
             }
-        });
-
-        // ---------------- Highlight random portal button ----------------
-        highlightPortalBtn.addEventListener('click', () => {
-            // clear any previous highlight timer and class
-            if (_lastPortalTimeout) {
-                clearTimeout(_lastPortalTimeout);
-                _lastPortalTimeout = null;
-            }
-            if (_lastHighlightedEl) {
-                _lastHighlightedEl.classList.remove('pulse-halo');
-                _lastHighlightedEl = null;
-            }
-
-            const portals = Array.from(document.querySelectorAll('.clone-image.portal'));
-            if (portals.length === 0) {
-                alert('No portal clones available to highlight.');
-                return;
-            }
-            // choose random portal
-            const chosen = portals[Math.floor(Math.random() * portals.length)];
-            // ensure it's brought forward (but keep ontop semantics)
-            if (chosen.classList.contains('ontop')) {
-                chosen.style.zIndex = String(nextOntopZ++);
-            } else {
-                chosen.style.zIndex = String(nextZ++);
-            }
-            // select it and scroll into view
-            //try { selectClone(chosen); } catch (e) {}
-            //try { chosen.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }); } catch (e) {}
-
-            // apply halo class
-            chosen.classList.add('pulse-halo');
-            _lastHighlightedEl = chosen;
-            // remove after 5 seconds
-            _lastPortalTimeout = setTimeout(() => {
-                if (_lastHighlightedEl) _lastHighlightedEl.classList.remove('pulse-halo');
-                _lastHighlightedEl = null;
-                _lastPortalTimeout = null;
-            }, 5000);
-        });
+        });        
 
         // ---------------- Export / Import JSON of image grid refs ----------------
         downloadBtn.addEventListener('click', () => {
