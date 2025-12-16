@@ -1,0 +1,80 @@
+<html>
+<head>
+</head>
+<body>
+    <img id="selectedpitch" src="" style="max-width:100%;" />
+    <script>
+        const images = [
+            "Pitches/combined-2025-12-16T17-53-34-903Z.png",
+            "Pitches/combined-2025-12-16T17-55-42-923Z.png"
+        ];
+        let currentIndex = 0;
+        function showImage(index) {
+            // Update the image source to show the selected image
+            document.getElementById('selectedpitch').src = images[index];
+        }
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowRight') {
+                currentIndex = (currentIndex + 1) % images.length;
+                showImage(currentIndex);
+            } else if (event.key === 'ArrowLeft') {
+                currentIndex = (currentIndex - 1 + images.length) % images.length;
+                showImage(currentIndex);
+            }
+            // If the user presses the f key, toggle fullscreen
+            else if (event.key === 'f') {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            }
+            // If the user presses the g key get the list of portals and chests from the text chunks stored in the image that is being shown
+            else if (event.key === 'g') {
+                fetch(images[currentIndex])
+                    .then(response => response.blob())
+                    .then(blob => {
+                        const reader = new FileReader();
+                        reader.onload = function() {
+                            const textChunks = [];
+                            const data = reader.result;
+                            // Find the mapJSON text chunk in the PNG data
+                            let offset = 8; // Skip PNG signature
+                            while (offset < data.byteLength) {
+                                const length = new DataView(data, offset, 4).getUint32(0);
+                                const type = String.fromCharCode(
+                                    new DataView(data, offset + 4, 1).getUint8(0),
+                                    new DataView(data, offset + 5, 1).getUint8(0),
+                                    new DataView(data, offset + 6, 1).getUint8(0),
+                                    new DataView(data, offset + 7, 1).getUint8(0)
+                                );
+                                if (type === 'tEXt') {
+                                    const textData = new Uint8Array(data, offset + 8, length);
+                                    const textString = new TextDecoder().decode(textData);
+                                    textChunks.push(textString);
+                                }
+                                offset += 12 + length; // Move to the next chunk
+                            }
+                            // Find the chunk that starts with "mapJSON"
+                            const mapJSONChunk = textChunks.find(chunk => chunk.startsWith('mapJSON'));
+                            if (mapJSONChunk) {
+                                alert(mapJSONChunk);
+                                const jsonString = mapJSONChunk.substring(8); // Remove "mapJSON" prefix and following null character
+                                const mapData = JSON.parse(jsonString);
+                                console.log('Portals:', mapData.portals);
+                                console.log('Chests:', mapData.chests);
+                            } else {
+                                console.log('No mapJSON chunk found.');
+                            }
+                        };
+                        reader.readAsArrayBuffer(blob);
+                    });
+            }
+        });
+        // Initial display
+        showImage(currentIndex);
+    </script>
+</body>
+</html>

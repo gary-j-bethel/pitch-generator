@@ -1,0 +1,1122 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Grid Generator</title>
+    <style>
+        body {
+            font-family: Segoe UI, Arial, sans-serif;
+        }
+
+        form {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        label {
+            font-size: 14px;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 6px;
+        }
+
+        button {
+            padding: 6px 10px;
+        }
+
+        /* grid container - explicit sizing will be set when generating */
+        #grid {
+            display: grid;
+            gap: 0px;
+            margin-top: 12px;
+            max-width: 90vw;
+            /* prevent scrollbars caused by the grid itself */
+            overflow: hidden;
+        }
+
+            #grid.hidden {
+                visibility: hidden;
+            }
+
+        .square {
+            background: #e9eef2;
+            border: 1px solid #cfd8de;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* cell sizes are set explicitly on the grid */
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            color: #333;
+            font-size: 12px;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        /* image container palette (static) */
+        #image-container {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+            #image-container img {
+                position: relative;
+                cursor: pointer;
+                /* displayed at 5% of original — width set from JS based on naturalWidth */
+                height: auto;
+                user-select: none;
+                -webkit-user-drag: none;
+                border: 1px solid transparent;
+                transform-origin: center center; /* clones rotate about centre */
+            }
+
+                #image-container img:hover {
+                    outline: 2px solid rgba(0,0,0,0.08);
+                }
+
+        /* clones (created from palette) are absolutely positioned */
+        .clone-image {
+            position: absolute;
+            left: 0;
+            top: 0;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-drag: none;
+            height: auto;
+            z-index: 2000;
+            transform-origin: center center; /* rotate around centre */
+        }
+
+        /* visual selection style (outline doesn't affect layout) */
+        .selected {
+            outline: 3px solid #1E90FF;
+            outline-offset: 0px;
+        }
+
+        /* pulsing halo used to highlight a portal */
+        .pulse-halo {
+            animation: pulse-halo 1s ease-out infinite;
+            z-index: 99999 !important;
+            /* small extra visual hint */
+            box-shadow: 0 0 0 4px rgba(30,144,255,0.15);
+            border-radius: 6px;
+        }
+
+        @keyframes pulse-halo {
+            0% {
+                box-shadow: 0 0 0 0 rgba(30,144,255,0.9), 0 0 0 0 rgba(30,144,255,0.2);
+            }
+
+            70% {
+                box-shadow: 0 0 0 18px rgba(30,144,255,0), 0 0 0 6px rgba(30,144,255,0.12);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(30,144,255,0), 0 0 0 0 rgba(30,144,255,0);
+            }
+        }
+
+        /* Trash icon */
+        #trash {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            width: 64px;
+            height: 64px;
+            border-radius: 8px;
+            background: #fff;
+            border: 2px solid #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+            transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
+            z-index: 3000;
+            user-select: none;
+        }
+
+            #trash.over {
+                background-color: #ffecec;
+                border-color: #f66;
+                transform: scale(1.05);
+            }
+    </style>
+</head>
+<body>
+
+    <div id="image-container">
+        <img class="ontop portal" src="portal.jpg" alt="portal" />
+        <img src="corridora.jpg" alt="corridora" />
+    </div>
+
+    <form id="sizeForm" onsubmit="return false;">
+        <label for="mapName">
+            Map Name
+            <input id="mapName">
+        </label>
+        <label for="widthInput">
+            Width
+            <input id="widthInput" type="number" min="1" max="200" value="50" required>
+        </label>
+        <label for="heightInput">
+            Height
+            <input id="heightInput" type="number" min="1" max="200" value="40" required>
+        </label>
+        <button id="generateBtn" type="button">Generate</button>
+        <button id="clearBtn" type="button">Clear</button>
+
+        <!-- grid visibility -->
+        <label><input id="hideGridCheckbox" type="checkbox" /> Hide grid</label>
+
+        <!-- rotate selected -->
+        <button id="rotateSelectedBtn" type="button">Rotate selected 90°</button>
+
+        <!-- export / import -->
+        <button id="downloadBtn" type="button">Download refs (JSON)</button>
+        <button id="chooseFileBtn" type="button">Load refs (JSON)</button>
+        <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
+
+        <!-- save combined original-scale image -->
+        <button id="saveCombinedBtn" type="button">Save combined original-scale image</button>
+
+        <!-- highlight random portal -->
+        <button id="highlightPortalBtn" type="button">Highlight random portal</button>
+    </form>
+
+    <div id="grid" aria-live="polite" role="region" aria-label="Generated grid"></div>
+
+    <div id="trash" title="Drop images here to remove">🗑️</div>
+
+    <script>const widthInput = document.getElementById('widthInput');
+        const heightInput = document.getElementById('heightInput');
+        const mapNameInput = document.getElementById('mapName');
+        const grid = document.getElementById('grid');
+        const generateBtn = document.getElementById('generateBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const chooseFileBtn = document.getElementById('chooseFileBtn');
+        const loadInput = document.getElementById('loadInput');
+        const trash = document.getElementById('trash');
+        const hideGridCheckbox = document.getElementById('hideGridCheckbox');
+        const saveCombinedBtn = document.getElementById('saveCombinedBtn');
+        const rotateSelectedBtn = document.getElementById('rotateSelectedBtn');
+        const highlightPortalBtn = document.getElementById('highlightPortalBtn');
+
+        // store last-generated grid dimensions so snapping can use them
+        let gridCols = 0;
+        let gridRows = 0;
+        // store last calculated cell size used to draw grid (displayed pixels)
+        let currentCellSize = 0;
+
+        // mapping of imageId -> { col, row, src, rot, origW, origH, ontop, classList } after last snap
+        const imageGridRefs = {};
+
+        // internal set of clones so we can manage them
+        const clones = new Set();
+
+        // currently selected clone element
+        let selectedClone = null;
+
+        // scale for display (5% of original)
+        const DISPLAY_SCALE = 0.10;
+
+        // z-index counters: normal and ontop
+        let nextZ = 2000;
+        let nextOntopZ = 100000;
+
+        // last highlighted portal bookkeeping
+        let _lastPortalTimeout = null;
+        let _lastHighlightedEl = null;
+
+        // ---------------- initialize palette scaling ----------------
+        function scalePaletteImages() {
+            const paletteImages = Array.from(document.querySelectorAll('#image-container img'));
+            paletteImages.forEach(img => {
+                // When naturalWidth available, set displayed width to DISPLAY_SCALE of original.
+                if (img.complete && img.naturalWidth) {
+                    const w = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE));
+                    img.style.width = w + 'px';
+                    img.dataset.origWidth = String(img.naturalWidth);
+                    img.dataset.origHeight = String(img.naturalHeight || Math.round(img.naturalWidth * (img.naturalHeight / img.naturalWidth || 1)));
+                } else {
+                    // attach load handler
+                    img.addEventListener('load', () => {
+                        const w = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE));
+                        img.style.width = w + 'px';
+                        img.dataset.origWidth = String(img.naturalWidth);
+                        img.dataset.origHeight = String(img.naturalHeight || Math.round(img.naturalWidth * (img.naturalHeight / img.naturalWidth || 1)));
+                    }, { once: true });
+                }
+            });
+        }
+
+        // call initially
+        scalePaletteImages();
+
+        // ---------------- selection helpers ----------------
+        function selectClone(img) {
+            if (!img) return;
+            if (selectedClone && selectedClone !== img) {
+                deselectClone(selectedClone);
+            }
+            selectedClone = img;
+            img.classList.add('selected');
+        }
+
+        function deselectClone(img) {
+            if (!img) return;
+            img.classList.remove('selected');
+            if (selectedClone === img) selectedClone = null;
+        }
+
+        function toggleSelect(img) {
+            if (!img) return;
+            if (selectedClone === img) {
+                deselectClone(img);
+            } else {
+                selectClone(img);
+            }
+        }
+
+        // ---------------- grid logic ----------------
+        function createGrid(cols, rows) {
+            grid.innerHTML = '';
+            gridCols = cols;
+            gridRows = rows;
+            if (cols < 1 || rows < 1) return;
+
+            const gridRect = grid.getBoundingClientRect();
+            const gridLeft = (gridRect.left || grid.offsetLeft || 20);
+            const gridTop = (gridRect.top || grid.offsetTop || (document.querySelector('form').getBoundingClientRect().bottom + 12));
+
+            const margin = 12;
+            const availableWidth = Math.max(0, window.innerWidth - gridLeft - margin);
+            const availableHeight = Math.max(0, window.innerHeight - gridTop - margin);
+
+            const desiredCellSize = 20;
+            const maxCellByWidth = Math.floor(availableWidth / cols) || 0;
+            const maxCellByHeight = Math.floor(availableHeight / rows) || 0;
+            let cellSize = Math.min(desiredCellSize, maxCellByWidth, maxCellByHeight);
+            if (cellSize < 1) cellSize = 1;
+
+            currentCellSize = cellSize;
+
+            grid.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+            grid.style.gridAutoRows = `${cellSize}px`;
+            grid.style.width = `${cols * cellSize}px`;
+            grid.style.height = `${rows * cellSize}px`;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'square';
+                    grid.appendChild(cell);
+                }
+            }
+        }
+
+        generateBtn.addEventListener('click', () => {
+            const cols = parseInt(widthInput.value, 10);
+            const rows = parseInt(heightInput.value, 10);
+            if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 1 || rows < 1) {
+                alert('Please enter positive integers for width and height.');
+                return;
+            }
+            createGrid(cols, rows);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            grid.innerHTML = '';
+            gridCols = 0;
+            gridRows = 0;
+            grid.style.width = '';
+            grid.style.height = '';
+            currentCellSize = 0;
+
+            // remove all clones from DOM and clear refs
+            clones.forEach(c => {
+                if (c && c.parentNode) c.parentNode.removeChild(c);
+            });
+            clones.clear();
+
+            Object.keys(imageGridRefs).forEach(k => delete imageGridRefs[k]);
+            // remove dataset attributes from any remaining images (palette)
+            document.querySelectorAll('#image-container img').forEach(img => {
+                delete img.dataset.gridCol;
+                delete img.dataset.gridRow;
+            });
+
+            // clear selection
+            selectedClone = null;
+        });
+
+        hideGridCheckbox.addEventListener('change', () => {
+            grid.classList.toggle('hidden', hideGridCheckbox.checked);
+        });
+
+        // utility: clamp a position so element stays inside viewport
+        function clampPosition(left, top, elem) {
+            const w = elem.offsetWidth;
+            const h = elem.offsetHeight;
+            const maxLeft = Math.max(0, window.innerWidth - w);
+            const maxTop = Math.max(0, window.innerHeight - h);
+            return {
+                left: Math.min(Math.max(0, left), maxLeft),
+                top: Math.min(Math.max(0, top), maxTop)
+            };
+        }
+
+        // expose a helper to read the recorded grid references (returns shallow copy)
+        window.getImageGridRefs = () => ({ ...imageGridRefs });
+
+        // ---------------- clone creation & dragging ----------------
+
+        // helper to compute a snap position from (col,row) -> {left, top}
+        function snapPositionFor(col, row) {
+            if (!gridCols || !gridRows || !currentCellSize) return null;
+            const gridRect = grid.getBoundingClientRect();
+            const cellWidth = currentCellSize;
+            const cellHeight = currentCellSize;
+            return {
+                left: gridRect.left + col * cellWidth,
+                top: gridRect.top + row * cellHeight,
+                cellWidth,
+                cellHeight,
+                gridRect
+            };
+        }
+
+        // New helper: snap the top-left corner of `img` to nearest grid intersection
+        function snapTopLeftToGrid(img) {
+            if (!gridCols || !gridRows || !currentCellSize) return;
+            const gridRect = grid.getBoundingClientRect();
+            const cellW = currentCellSize;
+            const cellH = currentCellSize;
+
+            // Try to read explicit style.left/top (px). If not present, fallback to bounding rect.
+            let left = parseFloat(img.style.left);
+            let top = parseFloat(img.style.top);
+
+            if (!Number.isFinite(left) || !Number.isFinite(top)) {
+                const rect = img.getBoundingClientRect();
+                left = rect.left;
+                top = rect.top;
+            }
+
+            // Convert to coordinates relative to grid
+            const relX = left - gridRect.left;
+            const relY = top - gridRect.top;
+
+            let col = Math.round(relX / cellW);
+            let row = Math.round(relY / cellH);
+
+            // Clamp into valid intersection range [0..cols]
+            col = Math.min(Math.max(0, col), gridCols);
+            row = Math.min(Math.max(0, row), gridRows);
+
+            const snapLeft = gridRect.left + col * cellW;
+            const snapTop = gridRect.top + row * cellH;
+
+            const clamped = clampPosition(snapLeft, snapTop, img);
+            img.style.left = clamped.left + 'px';
+            img.style.top = clamped.top + 'px';
+
+            // update dataset and recorded refs
+            const origW = Number(img.dataset.origWidth || img.naturalWidth || img.width || 0);
+            const origH = Number(img.dataset.origHeight || img.naturalHeight || img.height || 0);
+            const ontopFlag = img.classList.contains('ontop');
+            const classes = Array.from(img.classList);
+            img.dataset.gridCol = String(col);
+            img.dataset.gridRow = String(row);
+            img.dataset.origWidth = String(origW);
+            img.dataset.origHeight = String(origH);
+            imageGridRefs[img.id] = { col, row, src: img.src, rot: Number(img.dataset.rot || 0), origW, origH, ontop: ontopFlag, classList: classes };
+        }
+
+        // create a clone image from a palette image, preserve ontop flag, snap it to grid top-left (0,0) if grid exists
+        function createCloneFromPalette(src, origW, origH, rot = 0, id = null, isOntop = false, classList = null) {
+            const uid = id || `clone-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const img = document.createElement('img');
+            img.src = src;
+            img.id = uid;
+            img.className = 'clone-image';
+            if (classList && classList.length > 0) {
+                // apply classes from provided classList (preserve anything useful like 'portal','chest','ontop', etc.)
+                Array.from(classList).forEach(cls => {
+                    if (cls !== 'clone-image') img.classList.add(cls);
+                });
+            }
+            img.draggable = false;
+            img.style.transform = `rotate(${rot}deg)`;
+            img.dataset.rot = String(rot || 0);
+            img.style.transformOrigin = 'center center';
+
+            // set z-index according to ontop flag so ontop clones always above others
+            if (isOntop || img.classList.contains('ontop')) {
+                img.style.zIndex = String(nextOntopZ++);
+            } else {
+                img.style.zIndex = String(nextZ++);
+            }
+
+            document.body.appendChild(img);
+            clones.add(img);
+
+            // store original size on dataset (if known)
+            if (origW && origH) {
+                img.dataset.origWidth = String(origW);
+                img.dataset.origHeight = String(origH);
+            } else {
+                // if not provided, wait for load to populate
+                img.addEventListener('load', () => {
+                    img.dataset.origWidth = String(img.naturalWidth || img.width || 1);
+                    img.dataset.origHeight = String(img.naturalHeight || img.height || 1);
+                }, { once: true });
+            }
+
+            // displayed size: DISPLAY_SCALE of original when known / after load
+            function setDisplayedSize() {
+                let oW = parseInt(img.dataset.origWidth, 10);
+                if (!oW && img.naturalWidth) oW = img.naturalWidth;
+                const dispW = Math.max(1, Math.round((oW || 20) * DISPLAY_SCALE));
+                img.style.width = dispW + 'px';
+            }
+            img.addEventListener('load', setDisplayedSize, { once: true });
+            // also call immediately in case already loaded
+            setDisplayedSize();
+
+            // default position: grid top-left intersection (0,0) if grid exists, otherwise near top-left
+            if (gridCols > 0 && gridRows > 0 && currentCellSize > 0) {
+                const snap = snapPositionFor(0, 0);
+                if (snap) {
+                    const clamped = clampPosition(snap.left, snap.top, img);
+                    img.style.left = clamped.left + 'px';
+                    img.style.top = clamped.top + 'px';
+                    // record ref (orig sizes might be filled later)
+                    img.dataset.gridCol = '0';
+                    img.dataset.gridRow = '0';
+                    const classes = Array.from(img.classList);
+                    imageGridRefs[img.id] = { col: 0, row: 0, src: img.src, rot: Number(img.dataset.rot || 0), origW: Number(img.dataset.origWidth || 0), origH: Number(img.dataset.origHeight || 0), ontop: isOntop || img.classList.contains('ontop'), classList: classes };
+                }
+            } else {
+                // place near top-left if no grid
+                img.style.left = '20px';
+                img.style.top = '20px';
+            }
+
+            // newly created clones should be selected
+            selectClone(img);
+
+            enableDraggingOn(img);
+            return img;
+        }
+
+        // enable dragging & snapping & trash-drop for a clone image
+        function enableDraggingOn(img) {
+            let dragging = false;
+            let moved = false;
+            let startX = 0, startY = 0;
+            let origLeft = 0, origTop = 0;
+            let overTrash = false;
+            let pointerId = null;
+            const MOVE_THRESHOLD = 4; // px to distinguish click vs drag
+
+            function checkOverTrash(imgRect) {
+                const tRect = trash.getBoundingClientRect();
+                return !(imgRect.right < tRect.left || imgRect.left > tRect.right || imgRect.bottom < tRect.top || imgRect.top > tRect.bottom);
+            }
+
+            img.addEventListener('pointerdown', (ev) => {
+                // prevent default to avoid native drag and clicks interfering
+                ev.preventDefault();
+
+                // bring to front respecting ontop
+                if (img.classList.contains('ontop')) {
+                    img.style.zIndex = String(nextOntopZ++);
+                } else {
+                    img.style.zIndex = String(nextZ++);
+                }
+
+                pointerId = ev.pointerId;
+                img.setPointerCapture(pointerId);
+                dragging = true;
+                moved = false;
+                img.style.cursor = 'grabbing';
+                startX = ev.clientX;
+                startY = ev.clientY;
+                const rect = img.getBoundingClientRect();
+                origLeft = rect.left;
+                origTop = rect.top;
+
+                function onMove(moveEv) {
+                    if (!dragging || moveEv.pointerId !== pointerId) return;
+                    moveEv.preventDefault();
+                    const dx = moveEv.clientX - startX;
+                    const dy = moveEv.clientY - startY;
+                    if (!moved && Math.hypot(dx, dy) > MOVE_THRESHOLD) moved = true;
+                    const newLeft = origLeft + dx;
+                    const newTop = origTop + dy;
+                    const pos = clampPosition(newLeft, newTop, img);
+                    img.style.left = pos.left + 'px';
+                    img.style.top = pos.top + 'px';
+
+                    // indicate trash hover
+                    const imgRect = img.getBoundingClientRect();
+                    const currentlyOver = checkOverTrash(imgRect);
+                    if (currentlyOver !== overTrash) {
+                        overTrash = currentlyOver;
+                        if (overTrash) trash.classList.add('over'); else trash.classList.remove('over');
+                    }
+                }
+
+                function onUp(upEv) {
+                    if (upEv.pointerId !== pointerId) return;
+                    upEv.preventDefault();
+                    dragging = false;
+                    img.style.cursor = 'grab';
+                    try { img.releasePointerCapture(pointerId); } catch (e) { /* ignore */ }
+
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+
+                    // if this interaction was a click (no move) toggle selection
+                    if (!moved) {
+                        // clicking a selected img should deselect it; a new click selects it otherwise.
+                        toggleSelect(img);
+                        return;
+                    }
+
+                    // if dropped on trash -> remove
+                    const imgRect = img.getBoundingClientRect();
+                    const isOver = checkOverTrash(imgRect);
+                    trash.classList.remove('over');
+                    if (isOver) {
+                        // remove element and clean refs
+                        if (selectedClone === img) selectedClone = null;
+                        if (img.parentNode) img.parentNode.removeChild(img);
+                        clones.delete(img);
+                        delete imageGridRefs[img.id];
+                        return;
+                    }
+
+                    // Otherwise snap top-left to nearest grid intersection (top-left of image)
+                    if (gridCols > 0 && gridRows > 0 && grid.children.length > 0) {
+                        snapTopLeftToGrid(img);
+                        // ensure clone is selected after dragging
+                        selectClone(img);
+                    } else {
+                        // if no grid, remove refs
+                        delete img.dataset.gridCol;
+                        delete img.dataset.gridRow;
+                        delete imageGridRefs[img.id];
+
+                        // ensure clone is selected after dragging even when no grid
+                        selectClone(img);
+                    }
+                }
+
+                document.addEventListener('pointermove', onMove);
+                document.addEventListener('pointerup', onUp);
+            }, { passive: false });
+        }
+
+        // ---------------- palette click -> create clone ----------------
+        (function wirePalette() {
+            const paletteImages = Array.from(document.querySelectorAll('#image-container img'));
+            paletteImages.forEach((img) => {
+                // ensure orig sizes set for palette
+                if (img.complete && img.naturalWidth) {
+                    img.dataset.origWidth = String(img.naturalWidth);
+                    img.dataset.origHeight = String(img.naturalHeight || 0);
+                    // apply displayed width (in case loaded after earlier)
+                    img.style.width = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE)) + 'px';
+                } else {
+                    img.addEventListener('load', () => {
+                        img.dataset.origWidth = String(img.naturalWidth);
+                        img.dataset.origHeight = String(img.naturalHeight || 0);
+                        img.style.width = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE)) + 'px';
+                    }, { once: true });
+                }
+
+                img.addEventListener('click', (ev) => {
+                    // create clone of clicked palette item; pass orig sizes and ontop flag and classes
+                    const origW = Number(img.dataset.origWidth || img.naturalWidth || 0);
+                    const origH = Number(img.dataset.origHeight || img.naturalHeight || 0);
+                    const isOntop = img.classList.contains('ontop');
+                    createCloneFromPalette(img.src, origW, origH, 0, null, isOntop, img.classList);
+                });
+            });
+        })();
+
+        // rotate selected button
+        rotateSelectedBtn.addEventListener('click', () => {
+            if (!selectedClone) {
+                alert('No image selected.');
+                return;
+            }
+            const img = selectedClone;
+            let r = Number(img.dataset.rot || 0);
+            r = (r + 90) % 360;
+            img.dataset.rot = String(r);
+            img.style.transform = `rotate(${r}deg)`;
+            // update recorded ref if present (include classList)
+            if (imageGridRefs[img.id]) {
+                const classes = Array.from(img.classList);
+                imageGridRefs[img.id].rot = r;
+                imageGridRefs[img.id].classList = classes;
+            }
+            // after rotation, snap the top-left corner of the cloned img to the nearest grid intersection
+            if (gridCols > 0 && gridRows > 0 && grid.children.length > 0) {
+                // allow style to apply
+                requestAnimationFrame(() => {
+                    snapTopLeftToGrid(img);
+                });
+            }
+        });
+
+        // ---------------- Highlight random portal button ----------------
+        highlightPortalBtn.addEventListener('click', () => {
+            // clear any previous highlight timer and class
+            if (_lastPortalTimeout) {
+                clearTimeout(_lastPortalTimeout);
+                _lastPortalTimeout = null;
+            }
+            if (_lastHighlightedEl) {
+                _lastHighlightedEl.classList.remove('pulse-halo');
+                _lastHighlightedEl = null;
+            }
+
+            const portals = Array.from(document.querySelectorAll('.clone-image.portal'));
+            if (portals.length === 0) {
+                alert('No portal clones available to highlight.');
+                return;
+            }
+            // choose random portal
+            const chosen = portals[Math.floor(Math.random() * portals.length)];
+            // ensure it's brought forward (but keep ontop semantics)
+            if (chosen.classList.contains('ontop')) {
+                chosen.style.zIndex = String(nextOntopZ++);
+            } else {
+                chosen.style.zIndex = String(nextZ++);
+            }
+            // select it and scroll into view
+            //try { selectClone(chosen); } catch (e) {}
+            //try { chosen.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }); } catch (e) {}
+
+            // apply halo class
+            chosen.classList.add('pulse-halo');
+            _lastHighlightedEl = chosen;
+            // remove after 5 seconds
+            _lastPortalTimeout = setTimeout(() => {
+                if (_lastHighlightedEl) _lastHighlightedEl.classList.remove('pulse-halo');
+                _lastHighlightedEl = null;
+                _lastPortalTimeout = null;
+            }, 5000);
+        });
+
+        // ---------------- Export / Import JSON of image grid refs ----------------
+        downloadBtn.addEventListener('click', () => {
+            const payload = {
+                cols: gridCols,
+                rows: gridRows,
+                refs: imageGridRefs
+            };
+
+            if ((!payload.cols || !payload.rows) && Object.keys(payload.refs).length === 0) {
+                alert('No grid or image references to download.');
+                return;
+            }
+
+            const json = JSON.stringify(payload, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            a.download = `image-grid-refs-${timestamp}.json`;
+            a.href = url;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        });
+
+        chooseFileBtn.addEventListener('click', () => loadInput.click());
+
+        loadInput.addEventListener('change', (ev) => {
+            const file = ev.target.files && ev.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const data = JSON.parse(String(reader.result));
+                    if (!data || typeof data !== 'object') throw new Error('Invalid JSON');
+
+                    // If file contains grid dimensions, recreate grid so snaps / positions match file
+                    if (Number.isInteger(data.cols) && Number.isInteger(data.rows) && data.cols > 0 && data.rows > 0) {
+                        createGrid(data.cols, data.rows);
+                    } else if (!gridCols || !gridRows) {
+                        alert('Loaded file does not contain grid size and there is no active grid. Generate a grid first or use a file that includes grid size.');
+                        loadInput.value = '';
+                        return;
+                    }
+
+                    const refs = data.refs || {};
+                    const gridRect = grid.getBoundingClientRect();
+                    const cellWidth = currentCellSize || (gridRect.width / gridCols);
+                    const cellHeight = currentCellSize || (gridRect.height / gridRows);
+
+                    Object.keys(refs).forEach(id => {
+                        const ref = refs[id];
+                        if (!ref || typeof ref.col !== 'number' || typeof ref.row !== 'number') return;
+
+                        let img = document.getElementById(id);
+                        // if image doesn't exist in DOM but we have src, recreate clone with provided orig size & rotation & ontop & classes
+                        if (!img && ref.src) {
+                            img = createCloneFromPalette(ref.src, ref.origW, ref.origH, ref.rot || 0, id, !!ref.ontop, ref.classList || null);
+                        }
+
+                        if (!img) {
+                            console.warn(`Image with id "${id}" not found in DOM and no src provided, skipping.`);
+                            return;
+                        }
+
+                        // clamp indices
+                        const col = Math.min(Math.max(0, Math.round(ref.col)), gridCols);
+                        const row = Math.min(Math.max(0, Math.round(ref.row)), gridRows);
+
+                        const snapLeft = gridRect.left + col * cellWidth;
+                        const snapTop = gridRect.top + row * cellHeight;
+                        const clamped = clampPosition(snapLeft, snapTop, img);
+                        img.style.left = clamped.left + 'px';
+                        img.style.top = clamped.top + 'px';
+
+                        // record refs on element and global map
+                        img.dataset.gridCol = String(col);
+                        img.dataset.gridRow = String(row);
+                        img.dataset.origWidth = String(ref.origW || img.dataset.origWidth || img.naturalWidth || 0);
+                        img.dataset.origHeight = String(ref.origH || img.dataset.origHeight || img.naturalHeight || 0);
+                        img.dataset.rot = String(ref.rot || 0);
+                        img.style.transform = `rotate(${img.dataset.rot}deg)`;
+                        const ontopFlag = !!ref.ontop || img.classList.contains('ontop');
+                        if (ontopFlag) img.classList.add('ontop'); else img.classList.remove('ontop');
+
+                        // ensure classList is applied and recorded
+                        if (Array.isArray(ref.classList)) {
+                            // apply any classes from ref that aren't already on the element
+                            ref.classList.forEach(cls => {
+                                if (!img.classList.contains(cls)) img.classList.add(cls);
+                            });
+                        }
+                        const classes = Array.from(img.classList);
+                        imageGridRefs[img.id] = { col, row, src: img.src, rot: Number(img.dataset.rot || 0), origW: Number(img.dataset.origWidth || 0), origH: Number(img.dataset.origHeight || 0), ontop: ontopFlag, classList: classes };
+
+                        try {
+                            img.dispatchEvent(new CustomEvent('snappedToGrid', {
+                                detail: { id: img.id, col, row },
+                                bubbles: true,
+                            }));
+                        } catch (e) { /* ignore */ }
+                    });
+
+                    alert('Loaded image grid references.');
+                } catch (err) {
+                    console.error(err);
+                    alert('Failed to load JSON file: ' + (err && err.message ? err.message : 'unknown error'));
+                } finally {
+                    loadInput.value = '';
+                }
+            };
+            reader.onerror = () => {
+                alert('Failed to read file.');
+                loadInput.value = '';
+            };
+            reader.readAsText(file);
+        });
+
+        // ---------------- Save combined original-scale image ----------------
+        // We'll add PNG tEXt chunk containing metadata JSON under keyword "mapJSON".
+        // Helpers below insert tEXt chunk(s) before IEND and compute CRC.
+        function crc32Buf(buf) {
+            // buf: Uint8Array
+            const table = crc32Buf.table || (crc32Buf.table = (function () {
+                const t = new Uint32Array(256);
+                for (let i = 0; i < 256; i++) {
+                    let c = i;
+                    for (let k = 0; k < 8; k++) {
+                        if (c & 1) c = 0xedb88320 ^ (c >>> 1);
+                        else c = c >>> 1;
+                    }
+                    t[i] = c >>> 0;
+                }
+                return t;
+            })());
+            let crc = 0xffffffff;
+            for (let i = 0; i < buf.length; i++) {
+                crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xff];
+            }
+            return (crc ^ 0xffffffff) >>> 0;
+        }
+
+        function uint32ToBytesBE(n) {
+            return new Uint8Array([
+                (n >>> 24) & 0xff,
+                (n >>> 16) & 0xff,
+                (n >>> 8) & 0xff,
+                n & 0xff
+            ]);
+        }
+
+        async function addPngTextChunk(blob, keyword, text) {
+            const ab = await blob.arrayBuffer();
+            const src = new Uint8Array(ab);
+            // PNG signature 8 bytes
+            const sig = src.subarray(0, 8);
+            // parse chunks to find start of IEND
+            let offset = 8;
+            let iendOffset = -1;
+            while (offset + 8 <= src.length) {
+                const length = (src[offset] << 24) | (src[offset + 1] << 16) | (src[offset + 2] << 8) | src[offset + 3];
+                const type = String.fromCharCode(src[offset + 4], src[offset + 5], src[offset + 6], src[offset + 7]);
+                if (type === 'IEND') { iendOffset = offset; break; }
+                offset += 8 + length + 4; // length + type + data + crc
+            }
+            if (iendOffset < 0) {
+                // cannot find IEND - return original
+                return blob;
+            }
+
+            // create tEXt chunk: data = keyword + 0x00 + text (Latin1). We'll encode as UTF-8 in iTXt would be better,
+            // but tEXt is acceptable. Use keyword 'mapJSON' and value JSON.
+            const encoder = new TextEncoder();
+            const keywordBytes = encoder.encode(keyword); // keywords should be ASCII; ok
+            const textBytes = encoder.encode(text);
+            const data = new Uint8Array(keywordBytes.length + 1 + textBytes.length);
+            data.set(keywordBytes, 0);
+            data[keywordBytes.length] = 0;
+            data.set(textBytes, keywordBytes.length + 1);
+
+            const typeBytes = new Uint8Array([0x74, 0x45, 0x58, 0x74]); // 'tEXt'
+            const lengthBytes = uint32ToBytesBE(data.length);
+            // compute crc over type + data
+            const crcInput = new Uint8Array(typeBytes.length + data.length);
+            crcInput.set(typeBytes, 0);
+            crcInput.set(data, typeBytes.length);
+            const crc = crc32Buf(crcInput);
+            const crcBytes = uint32ToBytesBE(crc);
+
+            // assemble new chunk bytes
+            const chunk = new Uint8Array(4 + 4 + data.length + 4);
+            chunk.set(lengthBytes, 0);
+            chunk.set(typeBytes, 4);
+            chunk.set(data, 8);
+            chunk.set(crcBytes, 8 + data.length);
+
+            // build new PNG: src[0..iendOffset-1] + chunk + src[iendOffset .. end]
+            const before = src.subarray(0, iendOffset);
+            const after = src.subarray(iendOffset);
+            const out = new Uint8Array(before.length + chunk.length + after.length);
+            out.set(before, 0);
+            out.set(chunk, before.length);
+            out.set(after, before.length + chunk.length);
+
+            return new Blob([out], { type: 'image/png' });
+        }
+
+        // helper to build metadata object for mapName, portals and chests
+        // now accepts originalCellSize (pixels in the combined/original coordinate space) so we can record offsets
+        function buildMetadata(originalCellSize) {
+            const mapName = (mapNameInput && mapNameInput.value) ? String(mapNameInput.value) : '';
+            const gather = (cls) => {
+                const arr = [];
+                document.querySelectorAll(`.clone-image.${cls}`).forEach(el => {
+                    // prefer recorded refs
+                    const ref = imageGridRefs[el.id];
+                    let col = null, row = null;
+                    if (ref && typeof ref.col === 'number' && typeof ref.row === 'number') {
+                        col = ref.col;
+                        row = ref.row;
+                    } else {
+                        const c = parseInt(el.dataset.gridCol, 10);
+                        const r = parseInt(el.dataset.gridRow, 10);
+                        if (!Number.isNaN(c)) col = c;
+                        if (!Number.isNaN(r)) row = r;
+                    }
+                    if (col === null || row === null) {
+                        // skip items that don't have grid refs
+                        return;
+                    }
+                    // compute pixel offsets inside combined/original-scale image if originalCellSize provided
+                    let offsetX = undefined, offsetY = undefined;
+                    if (typeof originalCellSize === 'number' && Number.isFinite(originalCellSize)) {
+                        offsetX = Math.round(col * originalCellSize);
+                        offsetY = Math.round(row * originalCellSize);
+                    }
+                    const item = { col, row };
+                    if (offsetX !== undefined && offsetY !== undefined) {
+                        item.offsetX = offsetX;
+                        item.offsetY = offsetY;
+                    }
+                    arr.push(item);
+                });
+                return arr;
+            };
+
+            return {
+                mapName,
+                width: widthInput ? parseInt(widthInput.value, 10) : 0,
+                height: heightInput ? parseInt(heightInput.value, 10) : 0,
+                portals: gather('portal'),
+                chests: gather('chest')
+            };
+        }
+
+        saveCombinedBtn.addEventListener('click', async () => {
+            if (!gridCols || !gridRows || !currentCellSize) {
+                alert('Generate a grid first.');
+                return;
+            }
+            // Collect refs that have positions
+            const refs = Object.entries(imageGridRefs).map(([id, r]) => ({ id, ...r }));
+            if (refs.length === 0) {
+                alert('No placed images to combine.');
+                return;
+            }
+
+            // compute original per-cell size assuming displayed cell = currentCellSize = originalCellSize * DISPLAY_SCALE
+            // so originalCellSize = currentCellSize / DISPLAY_SCALE
+            const originalCellSize = currentCellSize / DISPLAY_SCALE;
+
+            // compute canvas extents (consider rotations 0/90/180/270 — rotated dims may swap)
+            let canvasWidth = 0, canvasHeight = 0;
+            const imagesToLoad = refs.map(r => {
+                return new Promise((resolve) => {
+                    const im = new Image();
+                    im.crossOrigin = 'anonymous';
+                    im.onload = () => {
+                        const origW = r.origW || im.naturalWidth || im.width;
+                        const origH = r.origH || im.naturalHeight || im.height;
+                        const rot = (r.rot || 0) % 360;
+                        const rotatedW = (rot % 180 === 0) ? origW : origH;
+                        const rotatedH = (rot % 180 === 0) ? origH : origW;
+                        const x = r.col * originalCellSize;
+                        const y = r.row * originalCellSize;
+                        canvasWidth = Math.max(canvasWidth, Math.ceil(x + rotatedW));
+                        canvasHeight = Math.max(canvasHeight, Math.ceil(y + rotatedH));
+                        resolve({ ref: r, img: im, origW, origH, rot, x, y });
+                    };
+                    im.onerror = () => {
+                        console.warn('Failed to load', r.src);
+                        resolve({ ref: r, img: null });
+                    };
+                    im.src = r.src;
+                });
+            });
+
+            const loaded = await Promise.all(imagesToLoad);
+
+            if (canvasWidth === 0 || canvasHeight === 0) {
+                alert('Nothing to draw.');
+                return;
+            }
+
+            // create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            const ctx = canvas.getContext('2d');
+
+            // background (black as before)
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // draw each image at its original scale with rotation about its center
+            for (const entry of loaded) {
+                if (!entry.img) continue;
+                const { img, origW, origH, rot, x, y } = entry;
+                ctx.save();
+                // translate to the image center (top-left x,y plus half width/height)
+                const cx = x + origW / 2;
+                const cy = y + origH / 2;
+                ctx.translate(cx, cy);
+                if (rot) ctx.rotate(rot * Math.PI / 180);
+                // draw image centered at origin so rotation is about center
+                ctx.drawImage(img, -origW / 2, -origH / 2, origW, origH);
+                ctx.restore();
+            }
+
+            // create PNG blob
+            canvas.toBlob(async (blob) => {
+                if (!blob) {
+                    alert('Failed to create image.');
+                    return;
+                }
+
+                // build metadata
+                const metadata = buildMetadata(originalCellSize);
+                // add mapName and grid refs for portals and chests as JSON in a tEXt chunk under keyword 'mapJSON'
+                const metadataJson = JSON.stringify(metadata);
+
+                try {
+                    const withMeta = await addPngTextChunk(blob, 'mapJSON', metadataJson);
+                    const url = URL.createObjectURL(withMeta);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    a.download = `combined-${timestamp}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 150);
+                } catch (err) {
+                    console.error('Failed to attach metadata to PNG', err);
+                    // fallback to downloading original blob
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    a.download = `combined-${timestamp}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 150);
+                }
+            }, 'image/png');
+        });
+
+        // Keep clones inside viewport if window resizes
+        window.addEventListener('resize', () => {
+            clones.forEach(img => {
+                if (!img) return;
+                const rect = img.getBoundingClientRect();
+                const pos = clampPosition(rect.left, rect.top, img);
+                img.style.left = pos.left + 'px';
+                img.style.top = pos.top + 'px';
+            });
+        });
+
+        // ensure new palette images are scaled when added later
+        new MutationObserver(() => scalePaletteImages()).observe(document.getElementById('image-container'), { childList: true });</script>
+
+
+
+</body>
+</html>
