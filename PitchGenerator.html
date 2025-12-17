@@ -425,6 +425,15 @@
             imageGridRefs[img.id] = { col, row, src: img.src, origW, origH, ontop: ontopFlag, classList: classes };
         }
 
+        // helper to update displayed width from dataset.origWidth (used by clones after swaps)
+        function updateDisplayedSizeFor(img) {
+            let oW = Number(img.dataset.origWidth);
+            if (!oW && img.naturalWidth) oW = img.naturalWidth;
+            oW = oW || 20;
+            const dispW = Math.max(1, Math.round(oW * DISPLAY_SCALE));
+            img.style.width = dispW + 'px';
+        }
+
         // create a clone image from a palette image, preserve ontop flag, snap it to grid top-left (0,0) if grid exists
         function createCloneFromPalette(src, origW, origH, rot = 0, id = null, isOntop = false, classList = null) {
             const uid = id || `clone-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -465,16 +474,10 @@
                 }, { once: true });
             }
 
-            // displayed size: DISPLAY_SCALE of original when known / after load
-            function setDisplayedSize() {
-                let oW = parseInt(img.dataset.origWidth, 10);
-                if (!oW && img.naturalWidth) oW = img.naturalWidth;
-                const dispW = Math.max(1, Math.round((oW || 20) * DISPLAY_SCALE));
-                img.style.width = dispW + 'px';
-            }
-            img.addEventListener('load', setDisplayedSize, { once: true });
-            // also call immediately in case already loaded
-            setDisplayedSize();
+            // displayed size: use helper which reads dataset.origWidth
+            img.addEventListener('load', () => updateDisplayedSizeFor(img), { once: true });
+            // also call immediately in case already loaded / dataset set
+            updateDisplayedSizeFor(img);
 
             // default position: grid top-left intersection (0,0) if grid exists, otherwise near top-left
             if (gridCols > 0 && gridRows > 0 && currentCellSize > 0) {
@@ -705,13 +708,26 @@
             // Clear any CSS transform as rotation is represented by filename now
             img.style.transform = '';
 
-            // update recorded ref if present (include classList and updated src)
+            // Swap original width/height so rotated image has dimensions swapped.
+            // This ensures display scale and combined-image exports use the swapped sizes.
+            const prevOrigW = Number(img.dataset.origWidth || img.naturalWidth || img.width || 0);
+            const prevOrigH = Number(img.dataset.origHeight || img.naturalHeight || img.height || 0);
+            // swap only if both are numbers; fallback keeps whatever values exist
+            img.dataset.origWidth = String(prevOrigH);
+            img.dataset.origHeight = String(prevOrigW);
+
+            // update displayed size to reflect swapped orientation
+            updateDisplayedSizeFor(img);
+
+            // update recorded ref if present (include classList and updated src and swapped orig sizes)
             if (imageGridRefs[img.id]) {
                 const classes = Array.from(img.classList);
                 imageGridRefs[img.id].classList = classes;
                 imageGridRefs[img.id].src = img.src;
+                imageGridRefs[img.id].origW = Number(img.dataset.origWidth || 0);
+                imageGridRefs[img.id].origH = Number(img.dataset.origHeight || 0);
             } else {
-                // ensure src is tracked for future exports
+                // ensure src and orig sizes are tracked for future exports
                 imageGridRefs[img.id] = {
                     col: Number(img.dataset.gridCol || 0),
                     row: Number(img.dataset.gridRow || 0),
@@ -1208,7 +1224,8 @@
         });
 
         // ensure new palette images are scaled when added later
-        new MutationObserver(() => scalePaletteImages()).observe(document.getElementById('image-container'), { childList: true });</script>
+        new MutationObserver(() => scalePaletteImages()).observe(document.getElementById('image-container'), { childList: true });
+    </script>
 
 
 
