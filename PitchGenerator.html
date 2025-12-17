@@ -421,7 +421,8 @@
             img.dataset.gridRow = String(row);
             img.dataset.origWidth = String(origW);
             img.dataset.origHeight = String(origH);
-            imageGridRefs[img.id] = { col, row, src: img.src, rot: Number(img.dataset.rot || 0), origW, origH, ontop: ontopFlag, classList: classes };
+            // keep src but do not force-saving rotation into exported JSON (export step strips rot)
+            imageGridRefs[img.id] = { col, row, src: img.src, origW, origH, ontop: ontopFlag, classList: classes };
         }
 
         // create a clone image from a palette image, preserve ontop flag, snap it to grid top-left (0,0) if grid exists
@@ -486,7 +487,8 @@
                     img.dataset.gridCol = '0';
                     img.dataset.gridRow = '0';
                     const classes = Array.from(img.classList);
-                    imageGridRefs[img.id] = { col: 0, row: 0, src: img.src, rot: Number(img.dataset.rot || 0), origW: Number(img.dataset.origWidth || 0), origH: Number(img.dataset.origHeight || 0), ontop: isOntop || img.classList.contains('ontop'), classList: classes };
+                    // keep src recorded; rot is intentionally not required in saved JSON (export strips it)
+                    imageGridRefs[img.id] = { col: 0, row: 0, src: img.src, origW: Number(img.dataset.origWidth || 0), origH: Number(img.dataset.origHeight || 0), ontop: isOntop || img.classList.contains('ontop'), classList: classes };
                 }
             } else {
                 // place near top-left if no grid
@@ -706,16 +708,14 @@
             // update recorded ref if present (include classList and updated src)
             if (imageGridRefs[img.id]) {
                 const classes = Array.from(img.classList);
-                imageGridRefs[img.id].rot = r;
                 imageGridRefs[img.id].classList = classes;
                 imageGridRefs[img.id].src = img.src;
             } else {
-                // ensure rot and src are tracked for future exports
+                // ensure src is tracked for future exports
                 imageGridRefs[img.id] = {
                     col: Number(img.dataset.gridCol || 0),
                     row: Number(img.dataset.gridRow || 0),
                     src: img.src,
-                    rot: r,
                     origW: Number(img.dataset.origWidth || 0),
                     origH: Number(img.dataset.origHeight || 0),
                     ontop: img.classList.contains('ontop'),
@@ -794,7 +794,6 @@
                     col: newCol,
                     row: newRow,
                     src: selectedClone.src,
-                    rot: Number(selectedClone.dataset.rot || 0),
                     origW: Number(selectedClone.dataset.origWidth || 0),
                     origH: Number(selectedClone.dataset.origHeight || 0),
                     ontop: selectedClone.classList.contains('ontop'),
@@ -816,10 +815,27 @@
 
         // ---------------- Export / Import JSON of image grid refs ----------------
         downloadBtn.addEventListener('click', () => {
+            // Build an export refs object that excludes any rotation data.
+            const refsForExport = {};
+            Object.keys(imageGridRefs).forEach(k => {
+                const r = imageGridRefs[k];
+                // copy and explicitly omit 'rot' if present
+                const copy = {
+                    col: r.col,
+                    row: r.row,
+                    src: r.src,
+                    origW: r.origW,
+                    origH: r.origH,
+                    ontop: r.ontop,
+                    classList: r.classList
+                };
+                refsForExport[k] = copy;
+            });
+
             const payload = {
                 cols: gridCols,
                 rows: gridRows,
-                refs: imageGridRefs
+                refs: refsForExport
             };
 
             if ((!payload.cols || !payload.rows) && Object.keys(payload.refs).length === 0) {
@@ -872,9 +888,10 @@
                         if (!ref || typeof ref.col !== 'number' || typeof ref.row !== 'number') return;
 
                         let img = document.getElementById(id);
-                        // if image doesn't exist in DOM but we have src, recreate clone with provided orig size & rotation & ontop & classes
+                        // if image doesn't exist in DOM but we have src, recreate clone with provided orig size.
+                        // Do NOT load or apply rotation from the JSON (rotation is encoded in filename/src).
                         if (!img && ref.src) {
-                            img = createCloneFromPalette(ref.src, ref.origW, ref.origH, ref.rot || 0, id, !!ref.ontop, ref.classList || null);
+                            img = createCloneFromPalette(ref.src, ref.origW, ref.origH, 0, id, !!ref.ontop, ref.classList || null);
                         }
 
                         if (!img) {
@@ -892,13 +909,12 @@
                         img.style.left = clamped.left + 'px';
                         img.style.top = clamped.top + 'px';
 
-                        // record refs on element and global map
+                        // record refs on element and global map (do not apply ref.rot)
                         img.dataset.gridCol = String(col);
                         img.dataset.gridRow = String(row);
                         img.dataset.origWidth = String(ref.origW || img.dataset.origWidth || img.naturalWidth || 0);
                         img.dataset.origHeight = String(ref.origH || img.dataset.origHeight || img.naturalHeight || 0);
-                        img.dataset.rot = String(ref.rot || 0);
-                        img.style.transform = `rotate(${img.dataset.rot}deg)`;
+                        // intentionally do not set dataset.rot or style.transform from file
                         const ontopFlag = !!ref.ontop || img.classList.contains('ontop');
                         if (ontopFlag) img.classList.add('ontop'); else img.classList.remove('ontop');
 
@@ -910,7 +926,8 @@
                             });
                         }
                         const classes = Array.from(img.classList);
-                        imageGridRefs[img.id] = { col, row, src: img.src, rot: Number(img.dataset.rot || 0), origW: Number(img.dataset.origWidth || 0), origH: Number(img.dataset.origHeight || 0), ontop: ontopFlag, classList: classes };
+                        // store refs but do not include rot from file
+                        imageGridRefs[img.id] = { col, row, src: img.src, origW: Number(img.dataset.origWidth || 0), origH: Number(img.dataset.origHeight || 0), ontop: ontopFlag, classList: classes };
 
                         try {
                             img.dispatchEvent(new CustomEvent('snappedToGrid', {
@@ -1088,7 +1105,7 @@
             // so originalCellSize = currentCellSize / DISPLAY_SCALE
             const originalCellSize = currentCellSize / DISPLAY_SCALE;
 
-            // compute canvas extents (consider rotations 0/90/180/270 — rotated dims may swap)
+            // compute canvas extents (treat images as already rotated in their src — do not apply additional rotation)
             let canvasWidth = 0, canvasHeight = 0;
             const imagesToLoad = refs.map(r => {
                 return new Promise((resolve) => {
@@ -1097,14 +1114,12 @@
                     im.onload = () => {
                         const origW = r.origW || im.naturalWidth || im.width;
                         const origH = r.origH || im.naturalHeight || im.height;
-                        const rot = (r.rot || 0) % 360;
-                        const rotatedW = (rot % 180 === 0) ? origW : origH;
-                        const rotatedH = (rot % 180 === 0) ? origH : origW;
+                        // Do not use r.rot here — rotation is encoded in the src filename already.
                         const x = r.col * originalCellSize;
                         const y = r.row * originalCellSize;
-                        canvasWidth = Math.max(canvasWidth, Math.ceil(x + rotatedW));
-                        canvasHeight = Math.max(canvasHeight, Math.ceil(y + rotatedH));
-                        resolve({ ref: r, img: im, origW, origH, rot, x, y });
+                        canvasWidth = Math.max(canvasWidth, Math.ceil(x + origW));
+                        canvasHeight = Math.max(canvasHeight, Math.ceil(y + origH));
+                        resolve({ ref: r, img: im, origW, origH, x, y });
                     };
                     im.onerror = () => {
                         console.warn('Failed to load', r.src);
@@ -1131,19 +1146,11 @@
             ctx.fillStyle = 'black';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // draw each image at its original scale with rotation about its center
+            // draw each image at its original scale — no rotation applied here
             for (const entry of loaded) {
                 if (!entry.img) continue;
-                const { img, origW, origH, rot, x, y } = entry;
-                ctx.save();
-                // translate to the image center (top-left x,y plus half width/height)
-                const cx = x + origW / 2;
-                const cy = y + origH / 2;
-                ctx.translate(cx, cy);
-                if (rot) ctx.rotate(rot * Math.PI / 180);
-                // draw image centered at origin so rotation is about center
-                ctx.drawImage(img, -origW / 2, -origH / 2, origW, origH);
-                ctx.restore();
+                const { img, origW, origH, x, y } = entry;
+                ctx.drawImage(img, x, y, origW, origH);
             }
 
             // create PNG blob
