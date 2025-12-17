@@ -142,7 +142,7 @@
         <img src="tcorridor3rd.png" alt="3rd edition T shaped corridor" />
         <img src="endzonea.jpg" alt="end zone" />
         <img src="4x4a.jpg" alt="4 by 4 room" />
-        <img src="4x8a3rd.png" alt="3rd edition 4 by 8 room with chasm" />
+        <img src="4x8a3rd-0.png" alt="3rd edition 4 by 8 room with chasm" />
 
     </div>
 
@@ -183,7 +183,7 @@
     <div id="trash" title="Drop images here to remove">🗑️</div>
 
     <script>
-    const widthInput = document.getElementById('widthInput');
+        const widthInput = document.getElementById('widthInput');
         const heightInput = document.getElementById('heightInput');
         const mapNameInput = document.getElementById('mapName');
         const grid = document.getElementById('grid');
@@ -638,6 +638,44 @@
             });
         })();
 
+        // helper: replace or insert rotation number in filename portion of a src
+        function replaceRotationInSrc(src, rot) {
+            // preserve query/hash suffix
+            const qIndex = src.indexOf('?');
+            const hIndex = src.indexOf('#');
+            let suffixIndex = src.length;
+            if (qIndex !== -1) suffixIndex = Math.min(suffixIndex, qIndex);
+            if (hIndex !== -1) suffixIndex = Math.min(suffixIndex, hIndex);
+            const base = src.substring(0, suffixIndex);
+            const suffix = src.substring(suffixIndex);
+
+            // find filename portion
+            const lastSlash = base.lastIndexOf('/');
+            const filename = base.substring(lastSlash + 1);
+            const dir = base.substring(0, lastSlash + 1);
+
+            const dot = filename.lastIndexOf('.');
+            if (dot === -1) {
+                // no extension — just append -rot
+                return dir + filename + '-' + String(rot) + suffix;
+            }
+            const name = filename.substring(0, dot);
+            const ext = filename.substring(dot);
+
+            const dash = name.lastIndexOf('-');
+            if (dash !== -1) {
+                const afterDash = name.substring(dash + 1);
+                if (/^\d+$/.test(afterDash)) {
+                    // replace existing numeric token
+                    const newName = name.substring(0, dash + 1) + String(rot);
+                    return dir + newName + ext + suffix;
+                }
+            }
+
+            // no numeric suffix to replace — insert -rot
+            return dir + name + '-' + String(rot) + ext + suffix;
+        }
+
         // rotate selected button
         rotateSelectedBtn.addEventListener('click', () => {
             if (!selectedClone) {
@@ -648,16 +686,46 @@
             let r = Number(img.dataset.rot || 0);
             r = (r + 90) % 360;
             img.dataset.rot = String(r);
-            img.style.transform = `rotate(${r}deg)`;
-            // update recorded ref if present (include classList)
+
+            // Update src: replace the numeric token after the last '-' in the filename (before extension) with rotation degrees.
+            // If there is no numeric token, insert "-<rot>" before the extension.
+            try {
+                const originalSrc = img.src || '';
+                const newSrc = replaceRotationInSrc(originalSrc, r);
+                if (newSrc !== originalSrc) {
+                    // assign new src; image will reload naturally
+                    img.src = newSrc;
+                }
+            } catch (e) {
+                console.warn('Failed to update image src for rotation', e);
+            }
+
+            // Clear any CSS transform as rotation is represented by filename now
+            img.style.transform = '';
+
+            // update recorded ref if present (include classList and updated src)
             if (imageGridRefs[img.id]) {
                 const classes = Array.from(img.classList);
                 imageGridRefs[img.id].rot = r;
                 imageGridRefs[img.id].classList = classes;
+                imageGridRefs[img.id].src = img.src;
+            } else {
+                // ensure rot and src are tracked for future exports
+                imageGridRefs[img.id] = {
+                    col: Number(img.dataset.gridCol || 0),
+                    row: Number(img.dataset.gridRow || 0),
+                    src: img.src,
+                    rot: r,
+                    origW: Number(img.dataset.origWidth || 0),
+                    origH: Number(img.dataset.origHeight || 0),
+                    ontop: img.classList.contains('ontop'),
+                    classList: Array.from(img.classList)
+                };
             }
+
             // after rotation, snap the top-left corner of the cloned img to the nearest grid intersection
             if (gridCols > 0 && gridRows > 0 && grid.children.length > 0) {
-                // allow style to apply
+                // allow any src/layout changes to apply
                 requestAnimationFrame(() => {
                     snapTopLeftToGrid(img);
                 });
