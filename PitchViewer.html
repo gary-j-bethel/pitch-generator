@@ -1,6 +1,10 @@
 <html>
 <head>
     <style>
+        body {
+            margin: 0;
+        }
+
         /* pulsing halo used to highlight a portal */
         .pulse-halo {
             animation: pulse-halo 1s ease-out infinite;
@@ -21,6 +25,29 @@
 
             100% {
                 box-shadow: 0 0 0 0 rgba(30,144,255,0), 0 0 0 0 rgba(30,144,255,0);
+            }
+        }
+
+        /* pulsing halo used to highlight a portal */
+        .pulse-halo-red {
+            animation: pulse-halo-red 1s ease-out infinite;
+            z-index: 99999 !important;
+            /* small extra visual hint */
+            box-shadow: 0 0 0 8px rgba(235,64,52,0.15);
+            border-radius: 12px;
+        }
+
+        @keyframes pulse-halo-red {
+            0% {
+                box-shadow: 0 0 0 0 rgba(235,64,52,0.9), 0 0 0 0 rgba(235,64,52,0.2);
+            }
+
+            70% {
+                box-shadow: 0 0 0 36px rgba(235,64,52,0), 0 0 0 12px rgba(235,64,52,0.12);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(235,64,52,0), 0 0 0 0 rgba(235,64,52,0);
             }
         }
     </style>
@@ -87,11 +114,25 @@
                             // Find the chunk that starts with "mapJSON"
                             const mapJSONChunk = textChunks.find(chunk => chunk.startsWith('mapJSON'));
                             if (mapJSONChunk) {
-                                alert(mapJSONChunk);
                                 const jsonString = mapJSONChunk.substring(8); // Remove "mapJSON" prefix and following null character
                                 mapData = JSON.parse(jsonString);
-                                console.log('Portals:', mapData.portals);
-                                console.log('Chests:', mapData.chests);
+                                // For each portal in mapData, create a div with the pulse-halo-red class and position it over the portal
+                                const img = document.getElementById('selectedpitch');
+                                // Loop through each portal in mapData.portals
+                                Array.from(mapData.portals).forEach(portal => {
+                                    const halo = document.createElement('div');
+                                    halo.style.position = 'absolute';
+                                    halo.style.borderRadius = '50%';
+                                    halo.style.width = '50px';
+                                    halo.style.height = '50px';
+                                    // Get the portal offsetX and offsetY and scale them to the image size compared to the width of the image at its natural size
+                                    var scale = img.width / img.naturalWidth;
+                                    halo.style.left = ((portal.offsetX * scale)) + 'px';
+                                    halo.style.top = ((portal.offsetY * scale)) + 'px';
+                                    halo.classList.add('pulse-halo-red');
+                                    document.body.appendChild(halo);
+                                });
+
                             } else {
                                 console.log('No mapJSON chunk found.');
                             }
