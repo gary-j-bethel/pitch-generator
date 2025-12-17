@@ -143,7 +143,7 @@
         <img src="endzonea.jpg" alt="end zone" />
         <img src="4x4a.jpg" alt="4 by 4 room" />
         <img src="4x8a3rd.png" alt="3rd edition 4 by 8 room with chasm" />
-        
+
     </div>
 
     <form id="sizeForm" onsubmit="return false;">
@@ -182,7 +182,8 @@
 
     <div id="trash" title="Drop images here to remove">🗑️</div>
 
-    <script>const widthInput = document.getElementById('widthInput');
+    <script>
+    const widthInput = document.getElementById('widthInput');
         const heightInput = document.getElementById('heightInput');
         const mapNameInput = document.getElementById('mapName');
         const grid = document.getElementById('grid');
@@ -661,7 +662,89 @@
                     snapTopLeftToGrid(img);
                 });
             }
-        });        
+        });
+
+        // ---------------- keyboard: move selected by one grid cell on arrow keys ----------------
+        window.addEventListener('keydown', (ev) => {
+            // only act for arrow keys
+            const moves = {
+                'ArrowLeft': [-1, 0],
+                'ArrowRight': [1, 0],
+                'ArrowUp': [0, -1],
+                'ArrowDown': [0, 1]
+            };
+            if (!moves.hasOwnProperty(ev.key)) return;
+
+            // don't interfere when user is typing in an input/textarea/contenteditable
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+            if (!selectedClone) return;
+            // require a grid to snap positions
+            if (!gridCols || !gridRows || !currentCellSize) return;
+
+            ev.preventDefault();
+
+            const [dx, dy] = moves[ev.key];
+
+            // resolve current col/row for selected clone
+            let col = Number(selectedClone.dataset.gridCol);
+            let row = Number(selectedClone.dataset.gridRow);
+
+            if (!Number.isFinite(col) || !Number.isFinite(row)) {
+                const ref = imageGridRefs[selectedClone.id];
+                if (ref && Number.isFinite(ref.col) && Number.isFinite(ref.row)) {
+                    col = ref.col;
+                    row = ref.row;
+                } else {
+                    // fallback: snap to nearest grid if possible
+                    const rect = selectedClone.getBoundingClientRect();
+                    const gridRect = grid.getBoundingClientRect();
+                    col = Math.round((rect.left - gridRect.left) / currentCellSize);
+                    row = Math.round((rect.top - gridRect.top) / currentCellSize);
+                }
+            }
+
+            let newCol = Math.min(Math.max(0, col + dx), gridCols);
+            let newRow = Math.min(Math.max(0, row + dy), gridRows);
+
+            // if nothing changes, bail out
+            if (newCol === col && newRow === row) return;
+
+            const snap = snapPositionFor(newCol, newRow);
+            if (!snap) return;
+
+            const clamped = clampPosition(snap.left, snap.top, selectedClone);
+            selectedClone.style.left = clamped.left + 'px';
+            selectedClone.style.top = clamped.top + 'px';
+            selectedClone.dataset.gridCol = String(newCol);
+            selectedClone.dataset.gridRow = String(newRow);
+
+            // update recorded refs
+            if (!imageGridRefs[selectedClone.id]) {
+                imageGridRefs[selectedClone.id] = {
+                    col: newCol,
+                    row: newRow,
+                    src: selectedClone.src,
+                    rot: Number(selectedClone.dataset.rot || 0),
+                    origW: Number(selectedClone.dataset.origWidth || 0),
+                    origH: Number(selectedClone.dataset.origHeight || 0),
+                    ontop: selectedClone.classList.contains('ontop'),
+                    classList: Array.from(selectedClone.classList)
+                };
+            } else {
+                imageGridRefs[selectedClone.id].col = newCol;
+                imageGridRefs[selectedClone.id].row = newRow;
+                imageGridRefs[selectedClone.id].classList = Array.from(selectedClone.classList);
+            }
+
+            try {
+                selectedClone.dispatchEvent(new CustomEvent('snappedToGrid', {
+                    detail: { id: selectedClone.id, col: newCol, row: newRow },
+                    bubbles: true,
+                }));
+            } catch (e) { /* ignore */ }
+        });
 
         // ---------------- Export / Import JSON of image grid refs ----------------
         downloadBtn.addEventListener('click', () => {
