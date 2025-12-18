@@ -1,3 +1,5 @@
+PitchViewer.html
+<!DOCTYPE html>
 <html>
 <head>
     <style>
@@ -73,6 +75,60 @@
                 box-shadow: 0 0 0 0 rgba(245,239,66,0), 0 0 0 0 rgba(245,239,66,0);
             }
         }
+
+        /* chest number label */
+        .chest-label {
+            position: absolute;
+            z-index: 100000;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.95);
+            color: #111;
+            font-weight: 700;
+            font-family: "Segoe UI", Roboto, Arial, sans-serif;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+        }
+
+        .chest-opened {
+            opacity: 0.6;
+            text-decoration: line-through;
+            background: #eee;
+            color: #666;
+        }
+
+        /* small ball indicator when a chest contains a ball (revealed on open) */
+        .ball-indicator {
+            position: absolute;
+            z-index: 100001;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: inline-block;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            color: white;
+            text-align: center;
+            line-height: 18px;
+        }
+
+            .ball-indicator.ball-1 {
+                background: #1E90FF;
+            }
+
+            .ball-indicator.ball-2 {
+                background: #32CD32;
+            }
+
+            .ball-indicator.ball-3 {
+                background: #FF8C00;
+            }
     </style>
 </head>
 <body>
@@ -84,20 +140,67 @@
             "Pitches/Symmetric-Large-1.png"
         ];
         let currentIndex = 0;
+
+        // keep references to overlays so we can remove/refresh them
+        const _overlays = [];
+        // state for chests by number (1..N)
+        const chestState = {}; // chestState[number] = { data, haloEl, labelEl, assignedBall: number|null, opened: bool, indicatorEl }
+
+        function clearOverlays() {
+            while (_overlays.length) {
+                const el = _overlays.pop();
+                if (el && el.parentNode) el.parentNode.removeChild(el);
+            }
+            // clear chestState
+            Object.keys(chestState).forEach(k => delete chestState[k]);
+        }
+
         function showImage(index) {
             // Update the image source to show the selected image
             document.getElementById('selectedpitch').src = images[index];
         }
-        document.addEventListener('keydown', (event) => {
+
+        // helper to position an element given offsetX/offsetY (original pixels) on the rendered image
+        function positionElementOverImage(el, offsetX, offsetY) {
+            const img = document.getElementById('selectedpitch');
+            // if naturalWidth is not available yet, wait for load
+            const applyPosition = () => {
+                const naturalW = img.naturalWidth || img.width || 1;
+                const naturalH = img.naturalHeight || img.height || 1;
+                const displayedW = img.width;
+                const displayedH = img.height;
+                const scaleX = displayedW / naturalW;
+                const scaleY = displayedH / naturalH;
+                // place based on scaleX/scaleY (usually uniform)
+                el.style.left = (img.offsetLeft + offsetX * scaleX) + 'px';
+                el.style.top = (img.offsetTop + offsetY * scaleY) + 'px';
+            };
+            if (img.naturalWidth && img.naturalWidth > 0) {
+                applyPosition();
+            } else {
+                img.addEventListener('load', applyPosition, { once: true });
+            }
+        }
+
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        document.addEventListener('keydown', async (event) => {
+            // navigation & fullscreen (unchanged)
             if (event.key === 'ArrowRight') {
                 currentIndex = (currentIndex + 1) % images.length;
                 showImage(currentIndex);
+                return;
             } else if (event.key === 'ArrowLeft') {
                 currentIndex = (currentIndex - 1 + images.length) % images.length;
                 showImage(currentIndex);
-            }
-            // If the user presses the f key, toggle fullscreen
-            else if (event.key === 'f') {
+                return;
+            } else if (event.key === 'f') {
                 if (!document.fullscreenElement) {
                     document.documentElement.requestFullscreen();
                 } else {
@@ -105,78 +208,140 @@
                         document.exitFullscreen();
                     }
                 }
+                return;
             }
-            // If the user presses the g key get the list of portals and chests from the text chunks stored in the image that is being shown
-            else if (event.key === 'g') {
-                fetch(images[currentIndex])
-                    .then(response => response.blob())
-                    .then(blob => {
-                        const reader = new FileReader();
-                        reader.onload = function () {
-                            const textChunks = [];
-                            const data = reader.result;
-                            // Find the mapJSON text chunk in the PNG data
-                            let offset = 8; // Skip PNG signature
-                            while (offset < data.byteLength) {
-                                const length = new DataView(data, offset, 4).getUint32(0);
-                                const type = String.fromCharCode(
-                                    new DataView(data, offset + 4, 1).getUint8(0),
-                                    new DataView(data, offset + 5, 1).getUint8(0),
-                                    new DataView(data, offset + 6, 1).getUint8(0),
-                                    new DataView(data, offset + 7, 1).getUint8(0)
-                                );
-                                if (type === 'tEXt') {
-                                    const textData = new Uint8Array(data, offset + 8, length);
-                                    const textString = new TextDecoder().decode(textData);
-                                    textChunks.push(textString);
-                                }
-                                offset += 12 + length; // Move to the next chunk
+
+            // 'g' = load mapJSON and set up overlays + chest numbering + ball assignment
+            if (event.key === 'g') {
+                // load PNG, extract mapJSON as before
+                clearOverlays();
+                mapData = null;
+
+                try {
+                    const resp = await fetch(images[currentIndex]);
+                    const blob = await resp.blob();
+                    const reader = new FileReader();
+                    reader.readAsArrayBuffer(blob);
+                    reader.onload = () => {
+                        const textChunks = [];
+                        const data = reader.result;
+                        let offset = 8; // Skip PNG signature
+                        while (offset + 8 <= data.byteLength) {
+                            const length = new DataView(data, offset, 4).getUint32(0);
+                            const type = String.fromCharCode(
+                                new DataView(data, offset + 4, 1).getUint8(0),
+                                new DataView(data, offset + 5, 1).getUint8(0),
+                                new DataView(data, offset + 6, 1).getUint8(0),
+                                new DataView(data, offset + 7, 1).getUint8(0)
+                            );
+                            if (type === 'tEXt') {
+                                const textData = new Uint8Array(data, offset + 8, length);
+                                const textString = new TextDecoder().decode(textData);
+                                textChunks.push(textString);
                             }
-                            // Find the chunk that starts with "mapJSON"
-                            const mapJSONChunk = textChunks.find(chunk => chunk.startsWith('mapJSON'));
-                            if (mapJSONChunk) {
-                                const jsonString = mapJSONChunk.substring(8); // Remove "mapJSON" prefix and following null character
-                                mapData = JSON.parse(jsonString);
-                                // For each portal in mapData, create a div with the pulse-halo-red class and position it over the portal
-                                const img = document.getElementById('selectedpitch');
-                                // Loop through each portal in mapData.portals
-                                Array.from(mapData.portals).forEach(portal => {
-                                    const halo = document.createElement('div');
-                                    halo.style.position = 'absolute';
-                                    halo.style.borderRadius = '50%';
-                                    halo.style.width = '50px';
-                                    halo.style.height = '50px';
-                                    // Get the portal offsetX and offsetY and scale them to the image size compared to the width of the image at its natural size
-                                    var scale = img.width / img.naturalWidth;
-                                    halo.style.left = ((portal.offsetX * scale)) + 'px';
-                                    halo.style.top = ((portal.offsetY * scale)) + 'px';
-                                    halo.classList.add('pulse-halo-red');
-                                    document.body.appendChild(halo);
-                                });
-                                // For each chest in mapData, create a div with the pulse-halo-red class and position it over the chest
-                                // Loop through each chest in mapData.chests
-                                Array.from(mapData.chests).forEach(chest => {
-                                    const halo = document.createElement('div');
-                                    halo.style.position = 'absolute';
-                                    halo.style.borderRadius = '50%';
-                                    halo.style.width = '50px';
-                                    halo.style.height = '50px';
-                                    // Get the chest offsetX and offsetY and scale them to the image size compared to the width of the image at its natural size
-                                    var scale = img.width / img.naturalWidth;
-                                    halo.style.left = ((chest.offsetX * scale)) + 'px';
-                                    halo.style.top = ((chest.offsetY * scale)) + 'px';
-                                    halo.classList.add('pulse-halo-yellow');
-                                    document.body.appendChild(halo);
-                                });
-                            } else {
-                                console.log('No mapJSON chunk found.');
+                            offset += 12 + length; // Move to the next chunk (length + type + data + crc)
+                        }
+                        const mapJSONChunk = textChunks.find(chunk => chunk.startsWith('mapJSON'));
+                        if (!mapJSONChunk) {
+                            alert('No mapJSON chunk found in image.');
+                            return;
+                        }
+
+                        // mapJSON chunk may be "mapJSON\0{...}" or "mapJSON{...}" depending on earlier writer.
+                        // strip leading "mapJSON" and optional null
+                        let jsonString = mapJSONChunk.substring(7);
+                        if (jsonString.charAt(0) === '\0') jsonString = jsonString.substring(1);
+                        try {
+                            mapData = JSON.parse(jsonString);
+                        } catch (e) {
+                            alert('Failed to parse map JSON from image: ' + e.message);
+                            return;
+                        }
+
+                        // We now have mapData. Prepare overlays.
+                        const img = document.getElementById('selectedpitch');
+
+                        // Ask user whether to use 1 or 3 balls
+                        let balls = null;
+                        while (balls === null) {
+                            const res = prompt('Assign balls to chests — choose 1 or 3 balls (enter 1 or 3). Cancel to skip assignment.', '3');
+                            if (res === null) {
+                                // user cancelled — proceed to still render chest numbers but no assignments
+                                balls = 0;
+                                break;
                             }
-                        };
-                        reader.readAsArrayBuffer(blob);
-                    });
-            }
-            // If the user presses the p key, pick a random portal from the mapData and highlight it on the image with a pulsing halo which lasts for 5 seconds before disappearing
-            else if (event.key === 'p') {
+                            const n = parseInt(res, 10);
+                            if (n === 1 || n === 3) {
+                                balls = n;
+                                break;
+                            }
+                            alert('Please enter either 1 or 3 (or Cancel).');
+                        }
+
+                        // First, number all chests 1..N and render labels and halo visuals.
+                        const chests = Array.isArray(mapData.chests) ? mapData.chests : [];
+                        // cleanup any existing chestState
+                        Object.keys(chestState).forEach(k => delete chestState[k]);
+
+                        chests.forEach((chest, idx) => {
+                            const number = idx + 1;
+                            // halo
+                            const halo = document.createElement('div');
+                            halo.style.position = 'absolute';
+                            halo.style.borderRadius = '50%';
+                            halo.style.width = '50px';
+                            halo.style.height = '50px';
+                            halo.classList.add('pulse-halo-yellow');
+                            document.body.appendChild(halo);
+                            _overlays.push(halo);
+
+                            // label shows chest number
+                            const label = document.createElement('div');
+                            label.className = 'chest-label';
+                            label.textContent = String(number);
+                            document.body.appendChild(label);
+                            _overlays.push(label);
+
+                            // store state
+                            chestState[number] = {
+                                data: chest,
+                                haloEl: halo,
+                                labelEl: label,
+                                assignedBall: null,
+                                opened: false,
+                                indicatorEl: null
+                            };
+
+                            // position elements over image (consider scale)
+                            positionElementOverImage(halo, chest.offsetX || 0, chest.offsetY || 0);
+                            positionElementOverImage(label, chest.offsetX || 0, chest.offsetY || 0);
+                        });
+
+                        // Assign balls (if chosen) to random distinct chests
+                        if (balls > 0 && chests.length > 0) {
+                            const chestNumbers = Object.keys(chestState).map(n => parseInt(n, 10));
+                            shuffleArray(chestNumbers);
+                            const assignCount = Math.min(balls, chestNumbers.length);
+                            for (let i = 0; i < assignCount; i++) {
+                                const chestNum = chestNumbers[i];
+                                // assign ball id (1..assignCount)
+                                chestState[chestNum].assignedBall = i + 1;
+                                // do not reveal indicator until opened
+                            }
+                        }
+
+                        alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
+                    };
+                } catch (err) {
+                    console.error(err);
+                    alert('Failed to load image or map JSON: ' + (err && err.message ? err.message : 'unknown error'));
+                }
+
+                return;
+            } // end 'g' key
+
+            // 'p' unchanged — highlight random portal
+            if (event.key === 'p') {
                 if (mapData && mapData.portals && mapData.portals.length > 0) {
                     const randomIndex = Math.floor(Math.random() * mapData.portals.length);
                     const portal = mapData.portals[randomIndex];
@@ -186,20 +351,75 @@
                     halo.style.borderRadius = '50%';
                     halo.style.width = '50px';
                     halo.style.height = '50px';
-                    // Get the portal offsetX and offsetY and scale them to the image size compared to the width of the image at its natural size
-                    var scale = img.width / img.naturalWidth;
-                    halo.style.left = ((portal.offsetX * scale)) + 'px';
-                    halo.style.top = ((portal.offsetY * scale)) + 'px';
+                    var scale = img.width / (img.naturalWidth || img.width || 1);
+                    halo.style.left = ((portal.offsetX * scale) + img.offsetLeft) + 'px';
+                    halo.style.top = ((portal.offsetY * scale) + img.offsetTop) + 'px';
                     halo.classList.add('pulse-halo');
                     document.body.appendChild(halo);
                     setTimeout(() => {
-                        document.body.removeChild(halo);
+                        if (halo.parentNode) halo.parentNode.removeChild(halo);
                     }, 5000);
                 } else {
                     console.log('No portal data available.');
                 }
+                return;
             }
+
+            // 'c' — open chest: prompt for chest number (user requested pressing c then number; prompt simplifies UX)
+            if (event.key === 'c') {
+                if (!mapData || !mapData.chests || mapData.chests.length === 0) {
+                    alert('No chest data loaded. Press g to load map data first.');
+                    return;
+                }
+
+                const res = prompt('Enter chest number to open (1..' + mapData.chests.length + '):');
+                if (res === null) return;
+                const chosen = parseInt(res, 10);
+                if (!Number.isFinite(chosen) || chosen < 1 || chosen > mapData.chests.length) {
+                    alert('Invalid chest number.');
+                    return;
+                }
+
+                const st = chestState[chosen];
+                if (!st) {
+                    alert('Chest data missing for that number.');
+                    return;
+                }
+
+                if (st.opened) {
+                    alert('Chest #' + chosen + ' is already open.');
+                    return;
+                }
+
+                st.opened = true;
+                // visually mark opened
+                if (st.haloEl && st.haloEl.parentNode) {
+                    st.haloEl.parentNode.removeChild(st.haloEl);
+                }
+                if (st.labelEl) {
+                    st.labelEl.classList.add('chest-opened');
+                }
+
+                // Reveal whether assignedBall present
+                if (st.assignedBall !== null) {
+                    // create a visible colored ball indicator near chest label
+                    const indicator = document.createElement('div');
+                    indicator.className = 'ball-indicator ball-' + (st.assignedBall);
+                    indicator.textContent = String(st.assignedBall);
+                    document.body.appendChild(indicator);
+                    _overlays.push(indicator);
+                    st.indicatorEl = indicator;
+                    positionElementOverImage(indicator, (st.data.offsetX || 0) + 12, (st.data.offsetY || 0) - 12);
+                    alert('Chest #' + chosen + ' opened — it CONTAINS ball #' + st.assignedBall + '.');
+                } else {
+                    alert('Chest #' + chosen + ' opened — it does NOT contain a ball.');
+                }
+
+                return;
+            }
+
         });
+
         // Initial display
         showImage(currentIndex);
     </script>
