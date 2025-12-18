@@ -203,7 +203,7 @@
         // store last calculated cell size used to draw grid (displayed pixels)
         let currentCellSize = 0;
 
-        // mapping of imageId -> { col, row, src, rot, origW, origH, ontop, classList } after last snap
+        // mapping of imageId -> { col, row, src, origW, origH, ontop, classList } after last snap
         const imageGridRefs = {};
 
         // internal set of clones so we can manage them
@@ -434,6 +434,96 @@
             img.style.width = dispW + 'px';
         }
 
+        // ---------------- palette click -> create clone ----------------
+        (function wirePalette() {
+            const paletteImages = Array.from(document.querySelectorAll('#image-container img'));
+            paletteImages.forEach((img) => {
+                // ensure orig sizes set for palette
+                if (img.complete && img.naturalWidth) {
+                    img.dataset.origWidth = String(img.naturalWidth);
+                    img.dataset.origHeight = String(img.naturalHeight || 0);
+                    // apply displayed width (in case loaded after earlier)
+                    img.style.width = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE)) + 'px';
+                } else {
+                    img.addEventListener('load', () => {
+                        img.dataset.origWidth = String(img.naturalWidth);
+                        img.dataset.origHeight = String(img.naturalHeight || 0);
+                        img.style.width = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE)) + 'px';
+                    }, { once: true });
+                }
+
+                img.addEventListener('click', (ev) => {
+                    // create clone of clicked palette item; pass orig sizes and ontop flag and classes
+                    const origW = Number(img.dataset.origWidth || img.naturalWidth || 0);
+                    const origH = Number(img.dataset.origHeight || img.naturalHeight || 0);
+                    const isOntop = img.classList.contains('ontop');
+                    createCloneFromPalette(img.src, origW, origH, 0, null, isOntop, img.classList);
+                });
+            });
+        })();
+
+        // helper: replace or insert rotation number in filename portion of a src
+        function replaceRotationInSrc(src, rot) {
+            // preserve query/hash suffix
+            const qIndex = src.indexOf('?');
+            const hIndex = src.indexOf('#');
+            let suffixIndex = src.length;
+            if (qIndex !== -1) suffixIndex = Math.min(suffixIndex, qIndex);
+            if (hIndex !== -1) suffixIndex = Math.min(suffixIndex, hIndex);
+            const base = src.substring(0, suffixIndex);
+            const suffix = src.substring(suffixIndex);
+
+            // find filename portion
+            const lastSlash = base.lastIndexOf('/');
+            const filename = base.substring(lastSlash + 1);
+            const dir = base.substring(0, lastSlash + 1);
+
+            const dot = filename.lastIndexOf('.');
+            if (dot === -1) {
+                // no extension — just append -rot
+                return dir + filename + '-' + String(rot) + suffix;
+            }
+            const name = filename.substring(0, dot);
+            const ext = filename.substring(dot);
+
+            const dash = name.lastIndexOf('-');
+            if (dash !== -1) {
+                const afterDash = name.substring(dash + 1);
+                if (/^\d+$/.test(afterDash)) {
+                    // replace existing numeric token
+                    const newName = name.substring(0, dash + 1) + String(rot);
+                    return dir + newName + ext + suffix;
+                }
+            }
+
+            // no numeric suffix to replace — insert -rot
+            return dir + name + '-' + String(rot) + ext + suffix;
+        }
+
+        // helper: parse rotation degrees from src filename (last numeric token after '-' before extension)
+        function rotationFromSrc(src) {
+            if (!src) return 0;
+            // ignore query/hash
+            const qIndex = src.indexOf('?');
+            const hIndex = src.indexOf('#');
+            let end = src.length;
+            if (qIndex !== -1) end = Math.min(end, qIndex);
+            if (hIndex !== -1) end = Math.min(end, hIndex);
+            const base = src.substring(0, end);
+            const lastSlash = base.lastIndexOf('/');
+            const filename = base.substring(lastSlash + 1);
+            const dot = filename.lastIndexOf('.');
+            const name = dot === -1 ? filename : filename.substring(0, dot);
+            const dash = name.lastIndexOf('-');
+            if (dash === -1) return 0;
+            const token = name.substring(dash + 1);
+            if (/^\d+$/.test(token)) {
+                const n = parseInt(token, 10) % 360;
+                return Number.isFinite(n) ? n : 0;
+            }
+            return 0;
+        }
+
         // create a clone image from a palette image, preserve ontop flag, snap it to grid top-left (0,0) if grid exists
         function createCloneFromPalette(src, origW, origH, rot = 0, id = null, isOntop = false, classList = null) {
             const uid = id || `clone-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -448,8 +538,7 @@
                 });
             }
             img.draggable = false;
-            img.style.transform = `rotate(${rot}deg)`;
-            img.dataset.rot = String(rot || 0);
+            // Rotation is encoded in src filename — do not set CSS rotate or store rotation in dataset.
             img.style.transformOrigin = 'center center';
 
             // set z-index according to ontop flag so ontop clones always above others
@@ -615,90 +704,21 @@
             }, { passive: false });
         }
 
-        // ---------------- palette click -> create clone ----------------
-        (function wirePalette() {
-            const paletteImages = Array.from(document.querySelectorAll('#image-container img'));
-            paletteImages.forEach((img) => {
-                // ensure orig sizes set for palette
-                if (img.complete && img.naturalWidth) {
-                    img.dataset.origWidth = String(img.naturalWidth);
-                    img.dataset.origHeight = String(img.naturalHeight || 0);
-                    // apply displayed width (in case loaded after earlier)
-                    img.style.width = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE)) + 'px';
-                } else {
-                    img.addEventListener('load', () => {
-                        img.dataset.origWidth = String(img.naturalWidth);
-                        img.dataset.origHeight = String(img.naturalHeight || 0);
-                        img.style.width = Math.max(1, Math.round(img.naturalWidth * DISPLAY_SCALE)) + 'px';
-                    }, { once: true });
-                }
-
-                img.addEventListener('click', (ev) => {
-                    // create clone of clicked palette item; pass orig sizes and ontop flag and classes
-                    const origW = Number(img.dataset.origWidth || img.naturalWidth || 0);
-                    const origH = Number(img.dataset.origHeight || img.naturalHeight || 0);
-                    const isOntop = img.classList.contains('ontop');
-                    createCloneFromPalette(img.src, origW, origH, 0, null, isOntop, img.classList);
-                });
-            });
-        })();
-
-        // helper: replace or insert rotation number in filename portion of a src
-        function replaceRotationInSrc(src, rot) {
-            // preserve query/hash suffix
-            const qIndex = src.indexOf('?');
-            const hIndex = src.indexOf('#');
-            let suffixIndex = src.length;
-            if (qIndex !== -1) suffixIndex = Math.min(suffixIndex, qIndex);
-            if (hIndex !== -1) suffixIndex = Math.min(suffixIndex, hIndex);
-            const base = src.substring(0, suffixIndex);
-            const suffix = src.substring(suffixIndex);
-
-            // find filename portion
-            const lastSlash = base.lastIndexOf('/');
-            const filename = base.substring(lastSlash + 1);
-            const dir = base.substring(0, lastSlash + 1);
-
-            const dot = filename.lastIndexOf('.');
-            if (dot === -1) {
-                // no extension — just append -rot
-                return dir + filename + '-' + String(rot) + suffix;
-            }
-            const name = filename.substring(0, dot);
-            const ext = filename.substring(dot);
-
-            const dash = name.lastIndexOf('-');
-            if (dash !== -1) {
-                const afterDash = name.substring(dash + 1);
-                if (/^\d+$/.test(afterDash)) {
-                    // replace existing numeric token
-                    const newName = name.substring(0, dash + 1) + String(rot);
-                    return dir + newName + ext + suffix;
-                }
-            }
-
-            // no numeric suffix to replace — insert -rot
-            return dir + name + '-' + String(rot) + ext + suffix;
-        }
-
-        // rotate selected button
+        // rotate selected button — use rotation encoded in src filename instead of dataset
         rotateSelectedBtn.addEventListener('click', () => {
             if (!selectedClone) {
                 alert('No image selected.');
                 return;
             }
             const img = selectedClone;
-            let r = Number(img.dataset.rot || 0);
-            r = (r + 90) % 360;
-            img.dataset.rot = String(r);
 
-            // Update src: replace the numeric token after the last '-' in the filename (before extension) with rotation degrees.
-            // If there is no numeric token, insert "-<rot>" before the extension.
+            // read current rotation from src, increment by 90, write back into src
+            const current = rotationFromSrc(img.src) || 0;
+            const newRot = (current + 90) % 360;
+
             try {
-                const originalSrc = img.src || '';
-                const newSrc = replaceRotationInSrc(originalSrc, r);
-                if (newSrc !== originalSrc) {
-                    // assign new src; image will reload naturally
+                const newSrc = replaceRotationInSrc(img.src || '', newRot);
+                if (newSrc !== img.src) {
                     img.src = newSrc;
                 }
             } catch (e) {
@@ -709,10 +729,8 @@
             img.style.transform = '';
 
             // Swap original width/height so rotated image has dimensions swapped.
-            // This ensures display scale and combined-image exports use the swapped sizes.
             const prevOrigW = Number(img.dataset.origWidth || img.naturalWidth || img.width || 0);
             const prevOrigH = Number(img.dataset.origHeight || img.naturalHeight || img.height || 0);
-            // swap only if both are numbers; fallback keeps whatever values exist
             img.dataset.origWidth = String(prevOrigH);
             img.dataset.origHeight = String(prevOrigW);
 
@@ -727,7 +745,6 @@
                 imageGridRefs[img.id].origW = Number(img.dataset.origWidth || 0);
                 imageGridRefs[img.id].origH = Number(img.dataset.origHeight || 0);
             } else {
-                // ensure src and orig sizes are tracked for future exports
                 imageGridRefs[img.id] = {
                     col: Number(img.dataset.gridCol || 0),
                     row: Number(img.dataset.gridRow || 0),
@@ -741,7 +758,6 @@
 
             // after rotation, snap the top-left corner of the cloned img to the nearest grid intersection
             if (gridCols > 0 && gridRows > 0 && grid.children.length > 0) {
-                // allow any src/layout changes to apply
                 requestAnimationFrame(() => {
                     snapTopLeftToGrid(img);
                 });
