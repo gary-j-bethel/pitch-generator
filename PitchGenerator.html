@@ -316,7 +316,11 @@
             createGrid(cols, rows);
         });
 
+        // Confirm clear before proceeding
         clearBtn.addEventListener('click', () => {
+            const ok = confirm('Clear the grid and remove all placed images? This cannot be undone.');
+            if (!ok) return;
+
             grid.innerHTML = '';
             gridCols = 0;
             gridRows = 0;
@@ -432,6 +436,46 @@
             oW = oW || 20;
             const dispW = Math.max(1, Math.round(oW * DISPLAY_SCALE));
             img.style.width = dispW + 'px';
+        }
+
+        // helper: test that an image URL loads successfully
+        function testImageExists(url, timeout = 7000) {
+            return new Promise((resolve) => {
+                if (!url) { resolve(false); return; }
+                const tester = new Image();
+                let done = false;
+                const onSuccess = () => { if (done) return; done = true; cleanup(); resolve(true); };
+                const onFail = () => { if (done) return; done = true; cleanup(); resolve(false); };
+                const cleanup = () => {
+                    tester.onload = tester.onerror = null;
+                    if (timer) clearTimeout(timer);
+                };
+                tester.onload = onSuccess;
+                tester.onerror = onFail;
+                tester.crossOrigin = 'anonymous';
+                tester.src = url;
+                const timer = setTimeout(() => {
+                    if (done) return;
+                    done = true;
+                    cleanup();
+                    resolve(false);
+                }, timeout);
+            });
+        }
+
+        // sanitize a user-provided map name for use in filenames
+        function safeFileName(name) {
+            if (!name) return '';
+            let s = String(name).trim();
+            if (!s) return '';
+            // remove characters commonly invalid in filenames, convert spaces to hyphens
+            s = s.replace(/[:\/\\?%*|"<>]/g, '');
+            s = s.replace(/\s+/g, '-');
+            // allow only safe characters
+            s = s.replace(/[^A-Za-z0-9\-_\.]/g, '');
+            // trim
+            s = s.substring(0, 120);
+            return s || '';
         }
 
         // ---------------- palette click -> create clone ----------------
@@ -705,24 +749,33 @@
         }
 
         // rotate selected button — use rotation encoded in src filename instead of dataset
-        rotateSelectedBtn.addEventListener('click', () => {
+        rotateSelectedBtn.addEventListener('click', async () => {
             if (!selectedClone) {
                 alert('No image selected.');
                 return;
             }
             const img = selectedClone;
 
-            // read current rotation from src, increment by 90, write back into src
+            // read current rotation from src, increment by 90, write back into src if the rotated resource exists
             const current = rotationFromSrc(img.src) || 0;
             const newRot = (current + 90) % 360;
+            const newSrc = replaceRotationInSrc(img.src || '', newRot);
+
+            // Test resource exists before switching
+            const exists = await testImageExists(newSrc);
+            if (!exists) {
+                alert('Cannot rotate: rotated image resource not found:\n' + newSrc);
+                return;
+            }
 
             try {
-                const newSrc = replaceRotationInSrc(img.src || '', newRot);
                 if (newSrc !== img.src) {
                     img.src = newSrc;
                 }
             } catch (e) {
                 console.warn('Failed to update image src for rotation', e);
+                alert('Failed to update image source for rotation.');
+                return;
             }
 
             // Clear any CSS transform as rotation is represented by filename now
@@ -879,8 +932,15 @@
             const blob = new Blob([json], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
+
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            a.download = `image-grid-refs-${timestamp}.json`;
+            const mapSafe = safeFileName(mapNameInput && mapNameInput.value ? mapNameInput.value : '');
+            if (mapSafe) {
+                a.download = `${mapSafe}-${timestamp}.json`;
+            } else {
+                a.download = `image-grid-refs-${timestamp}.json`;
+            }
+
             a.href = url;
             document.body.appendChild(a);
             a.click();
@@ -1203,7 +1263,12 @@
                     const a = document.createElement('a');
                     a.href = url;
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                    a.download = `combined-${timestamp}.png`;
+                    const mapSafe = safeFileName(mapNameInput && mapNameInput.value ? mapNameInput.value : '');
+                    if (mapSafe) {
+                        a.download = `${mapSafe}-${timestamp}.png`;
+                    } else {
+                        a.download = `combined-${timestamp}.png`;
+                    }
                     document.body.appendChild(a);
                     a.click();
                     setTimeout(() => {
@@ -1217,7 +1282,12 @@
                     const a = document.createElement('a');
                     a.href = url;
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                    a.download = `combined-${timestamp}.png`;
+                    const mapSafe = safeFileName(mapNameInput && mapNameInput.value ? mapNameInput.value : '');
+                    if (mapSafe) {
+                        a.download = `${mapSafe}-${timestamp}.png`;
+                    } else {
+                        a.download = `combined-${timestamp}.png`;
+                    }
                     document.body.appendChild(a);
                     a.click();
                     setTimeout(() => {
