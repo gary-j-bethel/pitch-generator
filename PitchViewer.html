@@ -551,7 +551,7 @@
                             }
                         }
 
-                        alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
+                        //alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
                     };
                 } catch (err) {
                     console.error(err);
@@ -592,7 +592,18 @@
                     return;
                 }
 
-                const input = await showInputModal('Enter chest number to open', '1');
+                //const input = await showInputModal('Enter chest number to open', '1');
+
+                // For each unopened chest, add a button
+                var chestButtons = Object.keys(chestState).filter(n => {
+                    const st = chestState[n];
+                    return st && !st.opened;
+                }).map(n => {
+                    return { label: String(n), value: n, classes: '' };
+                })
+
+                const input = await showChoiceModal('Enter chest number to open', chestButtons);
+
                 if (input === null) return;
                 const chosen = parseInt(input, 10);
                 if (!Number.isFinite(chosen) || chosen < 1 || chosen > mapData.chests.length) {
@@ -623,16 +634,25 @@
                 // Reveal whether assignedBall present
                 if (st.assignedBall !== null) {
                     // create a visible colored ball indicator near chest label
-                    const indicator = document.createElement('div');
-                    indicator.className = 'ball-indicator ball-' + (st.assignedBall);
-                    indicator.textContent = String(st.assignedBall);
-                    document.body.appendChild(indicator);
-                    _overlays.push(indicator);
-                    st.indicatorEl = indicator;
-                    positionElementOverImage(indicator, (st.data.offsetX || 0) + 12, (st.data.offsetY || 0) - 12);
-                    alert('Chest #' + chosen + ' opened — it CONTAINS ball #' + st.assignedBall + '.');
+                    //const indicator = document.createElement('div');
+                    //indicator.className = 'ball-indicator ball-' + (st.assignedBall);
+                    //indicator.textContent = String(st.assignedBall);
+                    //document.body.appendChild(indicator);
+                    //_overlays.push(indicator);
+                    //st.indicatorEl = indicator;
+                    //positionElementOverImage(indicator, (st.data.offsetX || 0) + 12, (st.data.offsetY || 0) - 12);
+
+                    await showChoiceModal('Chest #' + chosen + ' opened — it CONTAINS A BALL!', [
+                        { label: 'OK (x)', value: null, classes: '' }
+                    ]);
+
+                    //alert('Chest #' + chosen + ' opened — it CONTAINS ball #' + st.assignedBall + '.');
                 } else {
-                    alert('Chest #' + chosen + ' opened — it does NOT contain a ball.');
+                    //alert('Chest #' + chosen + ' opened — it does NOT contain a ball.');
+
+                    await showChoiceModal('Chest #' + chosen + ' opened — it EXPLODES!', [
+                        { label: 'OK (x)', value: null, classes: '' }
+                    ]);
                 }
 
                 return;
