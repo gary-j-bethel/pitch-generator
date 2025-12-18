@@ -1229,9 +1229,16 @@
             ctx.fillStyle = 'black';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // draw each image at its original scale — no rotation applied here
-            for (const entry of loaded) {
-                if (!entry.img) continue;
+            // draw images: first draw non-ontop images, then ontop images so ontop always appear above
+            const normalEntries = loaded.filter(e => e.img && !(e.ref && e.ref.ontop));
+            const ontopEntries = loaded.filter(e => e.img && e.ref && e.ref.ontop);
+
+            for (const entry of normalEntries) {
+                const { img, origW, origH, x, y } = entry;
+                ctx.drawImage(img, x, y, origW, origH);
+            }
+
+            for (const entry of ontopEntries) {
                 const { img, origW, origH, x, y } = entry;
                 ctx.drawImage(img, x, y, origW, origH);
             }
