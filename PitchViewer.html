@@ -1,4 +1,3 @@
-PitchViewer.html
 <!DOCTYPE html>
 <html>
 <head>
@@ -92,7 +91,6 @@ PitchViewer.html
             font-family: "Segoe UI", Roboto, Arial, sans-serif;
             box-shadow: 0 1px 3px rgba(0,0,0,0.35);
             pointer-events: none;
-            transform: translate(-50%, -50%);
         }
 
         .chest-opened {
@@ -261,6 +259,21 @@ PitchViewer.html
                         // We now have mapData. Prepare overlays.
                         const img = document.getElementById('selectedpitch');
 
+                        // Loop through each portal in mapData.portals
+                        Array.from(mapData.portals).forEach(portal => {
+                            const halo = document.createElement('div');
+                            halo.style.position = 'absolute';
+                            halo.style.borderRadius = '50%';
+                            halo.style.width = '50px';
+                            halo.style.height = '50px';
+                            // Get the portal offsetX and offsetY and scale them to the image size compared to the width of the image at its natural size
+                            var scale = img.width / img.naturalWidth;
+                            halo.style.left = ((portal.offsetX * scale)) + 'px';
+                            halo.style.top = ((portal.offsetY * scale)) + 'px';
+                            halo.classList.add('pulse-halo-red');
+                            document.body.appendChild(halo);
+                        });
+
                         // Ask user whether to use 1 or 3 balls
                         let balls = null;
                         while (balls === null) {
@@ -330,7 +343,7 @@ PitchViewer.html
                             }
                         }
 
-                        alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
+                        //alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
                     };
                 } catch (err) {
                     console.error(err);
