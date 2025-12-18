@@ -483,7 +483,7 @@
                             halo.style.height = '50px';
                             // positionElementOverImage will handle scaling when naturalWidth available
                             positionElementOverImage(halo, portal.offsetX || 0, portal.offsetY || 0);
-                            halo.classList.add('pulse-halo-red');
+                            halo.classList.add('pulse-halo');
                             document.body.appendChild(halo);
                             _overlays.push(halo);
                         });
@@ -566,7 +566,7 @@
                 if (mapData && mapData.portals && mapData.portals.length > 0) {
 
                     // Hide existing portal halos temporarily
-                    let portalhalos = document.getElementsByClassName('pulse-halo-red');
+                    let portalhalos = document.getElementsByClassName('pulse-halo');
                     for (let portalhalo of portalhalos) {
                         portalhalo.style.display = 'none';
                     }
@@ -581,7 +581,7 @@
                     halo.style.height = '50px';
                     // positionElementOverImage will handle scaling/position
                     positionElementOverImage(halo, portal.offsetX || 0, portal.offsetY || 0);
-                    halo.classList.add('pulse-halo');
+                    halo.classList.add('pulse-halo-red');
                     document.body.appendChild(halo);
                     setTimeout(() => {
                         if (halo.parentNode) halo.parentNode.removeChild(halo);
