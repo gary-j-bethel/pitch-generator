@@ -564,6 +564,13 @@
             // 'p' unchanged — highlight random portal
             if (event.key === 'p') {
                 if (mapData && mapData.portals && mapData.portals.length > 0) {
+
+                    // Hide existing portal halos temporarily
+                    let portalhalos = document.getElementsByClassName('pulse-halo-red');
+                    for (let portalhalo of portalhalos) {
+                        portalhalo.style.display = 'none';
+                    }
+
                     const randomIndex = Math.floor(Math.random() * mapData.portals.length);
                     const portal = mapData.portals[randomIndex];
                     const img = document.getElementById('selectedpitch');
@@ -578,6 +585,12 @@
                     document.body.appendChild(halo);
                     setTimeout(() => {
                         if (halo.parentNode) halo.parentNode.removeChild(halo);
+
+                        // Restore existing portal halos
+                        for (let portalhalo of portalhalos) {
+                            portalhalo.style.display = '';
+                        }
+
                     }, 5000);
                 } else {
                     console.log('No portal data available.');
