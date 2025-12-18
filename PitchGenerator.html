@@ -24,9 +24,12 @@
             align-items: center;
         }
 
-        input[type="number"] {
-            width: 80px;
+        input[type="text"], input[type="number"] {
             padding: 6px;
+        }
+
+        input[type="number"] {
+            width: 40px;
         }
 
         button {
@@ -42,10 +45,6 @@
             /* prevent scrollbars caused by the grid itself */
             overflow: hidden;
         }
-
-            #grid.hidden {
-                visibility: hidden;
-            }
 
         .square {
             background: #e9eef2;
@@ -136,20 +135,20 @@
 <body>
 
     <div id="image-container">
-        <img class="ontop portal" src="portal.png" alt="portal" />
-        <img class="ontop chest" src="chestb.png" alt="chest" />
-        <img src="corridora.jpg" alt="corridor a" />
-        <img src="tcorridor3rd.png" alt="3rd edition T shaped corridor" />
-        <img src="endzonea.jpg" alt="end zone" />
-        <img src="4x4a.jpg" alt="4 by 4 room" />
-        <img src="4x8a3rd-0.png" alt="3rd edition 4 by 8 room with chasm" />
+        <img class="ontop portal" src="Tiles/portal.png" alt="portal" />
+        <img class="ontop chest" src="Tiles/chestb.png" alt="chest" />
+        <img src="Tiles/corridora-0.jpg" alt="corridor a" />
+        <img src="Tiles/tcorridor3rd-0.png" alt="3rd edition T shaped corridor" />
+        <img src="Tiles/endzonea-0.jpg" alt="end zone" />
+        <img src="Tiles/4x4a.jpg" alt="4 by 4 room" />
+        <img src="Tiles/4x8a3rd-0.png" alt="3rd edition 4 by 8 room with chasm" />
 
     </div>
 
     <form id="sizeForm" onsubmit="return false;">
         <label for="mapName">
             Map Name
-            <input id="mapName">
+            <input id="mapName" type="text">
         </label>
         <label for="widthInput">
             Width
@@ -162,19 +161,16 @@
         <button id="generateBtn" type="button">Generate</button>
         <button id="clearBtn" type="button">Clear</button>
 
-        <!-- grid visibility -->
-        <label><input id="hideGridCheckbox" type="checkbox" /> Hide grid</label>
-
         <!-- rotate selected -->
-        <button id="rotateSelectedBtn" type="button">Rotate selected 90°</button>
+        <button id="rotateSelectedBtn" type="button">Rotate 90°</button>
 
         <!-- export / import -->
-        <button id="downloadBtn" type="button">Download refs (JSON)</button>
-        <button id="chooseFileBtn" type="button">Load refs (JSON)</button>
+        <button id="downloadBtn" type="button">Save Map</button>
+        <button id="chooseFileBtn" type="button">Load Map</button>
         <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
 
         <!-- save combined original-scale image -->
-        <button id="saveCombinedBtn" type="button">Save combined original-scale image</button>
+        <button id="saveCombinedBtn" type="button">Export Image</button>
 
     </form>
 
@@ -193,7 +189,6 @@
         const chooseFileBtn = document.getElementById('chooseFileBtn');
         const loadInput = document.getElementById('loadInput');
         const trash = document.getElementById('trash');
-        const hideGridCheckbox = document.getElementById('hideGridCheckbox');
         const saveCombinedBtn = document.getElementById('saveCombinedBtn');
         const rotateSelectedBtn = document.getElementById('rotateSelectedBtn');
 
@@ -343,10 +338,6 @@
 
             // clear selection
             selectedClone = null;
-        });
-
-        hideGridCheckbox.addEventListener('change', () => {
-            grid.classList.toggle('hidden', hideGridCheckbox.checked);
         });
 
         // utility: clamp a position so element stays inside viewport
@@ -764,7 +755,7 @@
             // Test resource exists before switching
             const exists = await testImageExists(newSrc);
             if (!exists) {
-                alert('Cannot rotate: rotated image resource not found:\n' + newSrc);
+                //alert('Cannot rotate: rotated image resource not found:\n' + newSrc);
                 return;
             }
 
