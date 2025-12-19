@@ -166,12 +166,11 @@
         <button id="rotateSelectedBtn" type="button">Rotate 90°</button>
 
         <!-- export / import -->
-        <button id="downloadBtn" type="button">Save Map</button>
         <button id="chooseFileBtn" type="button">Load Map</button>
         <input id="loadInput" type="file" accept="image/png" style="display:none" />
 
         <!-- save combined original-scale image -->
-        <button id="saveCombinedBtn" type="button">Export Image</button>
+        <button id="saveCombinedBtn" type="button">Save Map</button>
 
     </form>
 
@@ -186,7 +185,6 @@
         const grid = document.getElementById('grid');
         const generateBtn = document.getElementById('generateBtn');
         const clearBtn = document.getElementById('clearBtn');
-        const downloadBtn = document.getElementById('downloadBtn');
         const chooseFileBtn = document.getElementById('chooseFileBtn');
         const loadInput = document.getElementById('loadInput');
         const trash = document.getElementById('trash');
@@ -890,57 +888,7 @@
             } catch (e) { /* ignore */ }
         });
 
-        // ---------------- Export / Import JSON of image grid refs ----------------
-        downloadBtn.addEventListener('click', () => {
-            // Build an export refs object that excludes any rotation data.
-            const refsForExport = {};
-            Object.keys(imageGridRefs).forEach(k => {
-                const r = imageGridRefs[k];
-                // copy and explicitly omit 'rot' if present
-                const copy = {
-                    col: r.col,
-                    row: r.row,
-                    src: r.src,
-                    origW: r.origW,
-                    origH: r.origH,
-                    ontop: r.ontop,
-                    classList: r.classList
-                };
-                refsForExport[k] = copy;
-            });
-
-            const payload = {
-                cols: gridCols,
-                rows: gridRows,
-                refs: refsForExport
-            };
-
-            if ((!payload.cols || !payload.rows) && Object.keys(payload.refs).length === 0) {
-                alert('No grid or image references to download.');
-                return;
-            }
-
-            const json = JSON.stringify(payload, null, 2);
-            const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const mapSafe = safeFileName(mapNameInput && mapNameInput.value ? mapNameInput.value : '');
-            if (mapSafe) {
-                a.download = `${mapSafe}-${timestamp}.json`;
-            } else {
-                a.download = `image-grid-refs-${timestamp}.json`;
-            }
-
-            a.href = url;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 100);
-        });
+        // ---------------- Export / Import JSON of image grid refs ----------------        
 
         chooseFileBtn.addEventListener('click', () => loadInput.click());
 
@@ -1058,8 +1006,6 @@
                             }));
                         } catch (e) { /* ignore */ }
                     });
-
-                    alert('Loaded image grid references.');
                 } catch (err) {
                     console.error(err);
                     alert('Failed to load JSON file: ' + (err && err.message ? err.message : 'unknown error'));
