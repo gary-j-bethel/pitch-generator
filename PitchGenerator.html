@@ -1255,11 +1255,15 @@
                 }
 
                 // build metadata
-                const metadata = buildMetadata(originalCellSize);
+                var a1 = buildMetadata(originalCellSize)
+
+                const metadata = [].concat(a1, imageGridRefs);
                 // add mapName and grid refs for portals and chests as JSON in a tEXt chunk under keyword 'mapJSON'
                 const metadataJson = JSON.stringify(metadata);
 
                 try {
+                    const j = JSON.stringify(imageGridRefs);
+
                     const withMeta = await addPngTextChunk(blob, 'mapJSON', metadataJson);
                     const url = URL.createObjectURL(withMeta);
                     const a = document.createElement('a');
