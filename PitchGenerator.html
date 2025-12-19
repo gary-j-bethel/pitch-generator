@@ -1190,6 +1190,7 @@
             const originalCellSize = currentCellSize / DISPLAY_SCALE;
 
             // compute canvas extents (treat images as already rotated in their src — do not apply additional rotation)
+            // We'll load the images (to ensure we can draw them) but we will force the final canvas size to exactly match the grid's full size.
             let canvasWidth = 0, canvasHeight = 0;
             const imagesToLoad = refs.map(r => {
                 return new Promise((resolve) => {
@@ -1201,6 +1202,7 @@
                         // Do not use r.rot here — rotation is encoded in the src filename already.
                         const x = r.col * originalCellSize;
                         const y = r.row * originalCellSize;
+                        // keep previous behavior of computing extent, but we'll override with grid size below
                         canvasWidth = Math.max(canvasWidth, Math.ceil(x + origW));
                         canvasHeight = Math.max(canvasHeight, Math.ceil(y + origH));
                         resolve({ ref: r, img: im, origW, origH, x, y });
@@ -1215,10 +1217,11 @@
 
             const loaded = await Promise.all(imagesToLoad);
 
-            if (canvasWidth === 0 || canvasHeight === 0) {
-                alert('Nothing to draw.');
-                return;
-            }
+            // Force canvas dimensions to match the grid full original size
+            const gridFullWidth = Math.max(1, Math.ceil(gridCols * originalCellSize));
+            const gridFullHeight = Math.max(1, Math.ceil(gridRows * originalCellSize));
+            canvasWidth = gridFullWidth;
+            canvasHeight = gridFullHeight;
 
             // create canvas
             const canvas = document.createElement('canvas');
