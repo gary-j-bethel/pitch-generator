@@ -168,7 +168,7 @@
         <!-- export / import -->
         <button id="downloadBtn" type="button">Save Map</button>
         <button id="chooseFileBtn" type="button">Load Map</button>
-        <input id="loadInput" type="file" accept=".json,application/json" style="display:none" />
+        <input id="loadInput" type="file" accept="image/png" style="display:none" />
 
         <!-- save combined original-scale image -->
         <button id="saveCombinedBtn" type="button">Export Image</button>
@@ -944,13 +944,51 @@
 
         chooseFileBtn.addEventListener('click', () => loadInput.click());
 
+        // helper to parse mapJSON tEXt chunk from PNG ArrayBuffer
+        function tryReadMapJsonFromPng(ab) {
+            const data = ab;
+            let offset = 8; // skip PNG signature
+            while (offset + 8 <= ab.byteLength) {
+                const length = new DataView(data, offset, 4).getUint32(0);
+                // read chunk type
+                const t0 = new DataView(data, offset + 4, 1).getUint8(0);
+                const t1 = new DataView(data, offset + 5, 1).getUint8(0);
+                const t2 = new DataView(data, offset + 6, 1).getUint8(0);
+                const t3 = new DataView(data, offset + 7, 1).getUint8(0);
+                const type = String.fromCharCode(t0, t1, t2, t3);
+                if (type === 'tEXt') {
+                    const textData = new Uint8Array(data, offset + 8, length);
+                    const textString = new TextDecoder().decode(textData);
+                    if (textString && textString.startsWith('mapJSON')) {
+                        // strip 'mapJSON' then optional NUL
+                        let jsonString = textString.substring(7);
+                        if (jsonString && jsonString.charCodeAt(0) === 0) jsonString = jsonString.substring(1);
+                        return JSON.parse(jsonString);
+                    }
+                }
+                offset += 12 + length; // move to next chunk (length + type + data + crc)
+            }
+            return null;
+        }
+
         loadInput.addEventListener('change', (ev) => {
             const file = ev.target.files && ev.target.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = () => {
                 try {
-                    const data = JSON.parse(String(reader.result));
+                    const parsed = tryReadMapJsonFromPng(reader.result);
+                    if (!parsed) {
+                        alert('No mapJSON tEXt chunk found in the PNG.');
+                        return;
+                    }
+                    // map data is in the second element of the JSON object (per requirement)
+                    if (!Array.isArray(parsed) || parsed.length < 2) {
+                        alert('mapJSON chunk must be a JSON array with the map data in the second element.');
+                        return;
+                    }
+
+                    const data = parsed[1];
                     if (!data || typeof data !== 'object') throw new Error('Invalid JSON');
 
                     // If file contains grid dimensions, recreate grid so snaps / positions match file
@@ -1033,7 +1071,7 @@
                 alert('Failed to read file.');
                 loadInput.value = '';
             };
-            reader.readAsText(file);
+            reader.readAsArrayBuffer(file);
         });
 
         // ---------------- Save combined original-scale image ----------------
@@ -1255,9 +1293,15 @@
                 }
 
                 // build metadata
-                var a1 = buildMetadata(originalCellSize)
+                var a1 = buildMetadata(originalCellSize);
 
-                const metadata = [].concat(a1, imageGridRefs);
+                const payload = {
+                    cols: gridCols,
+                    rows: gridRows,
+                    refs: imageGridRefs
+                };
+
+                const metadata = [].concat(a1, payload);
                 // add mapName and grid refs for portals and chests as JSON in a tEXt chunk under keyword 'mapJSON'
                 const metadataJson = JSON.stringify(metadata);
 
