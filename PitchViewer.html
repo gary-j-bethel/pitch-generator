@@ -201,7 +201,8 @@
         var mapData = null;
 
         const images = [
-            "Pitches/Symmetric-Large-1.png"
+            "Pitches/Symmetric-Large-1.png",
+            "Pitches/combined-2025-12-19T19-15-57-969Z.png"
         ];
         let currentIndex = 0;
 
@@ -465,7 +466,7 @@
                         let jsonString = mapJSONChunk.substring(7);
                         if (jsonString.charAt(0) === '\0') jsonString = jsonString.substring(1);
                         try {
-                            mapData = JSON.parse(jsonString);
+                            mapData = JSON.parse(jsonString)[0];
                         } catch (e) {
                             alert('Failed to parse map JSON from image: ' + e.message);
                             return;
