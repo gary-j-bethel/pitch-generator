@@ -702,10 +702,10 @@
             if (event.key === 'p') {
                 if (mapData && mapData.portals && mapData.portals.length > 0) {
 
-                    // Hide existing portal halos temporarily
-                    let portalhalos = document.getElementsByClassName('pulse-halo');
-                    for (let portalhalo of portalhalos) {
-                        portalhalo.style.display = 'none';
+                    // Hide existing halos temporarily
+                    let halos = document.querySelectorAll('.pulse-halo,.pulse-halo-yellow');
+                    for (let haloToChange of halos) {
+                        haloToChange.style.display = 'none';
                     }
 
                     const randomIndex = Math.floor(Math.random() * mapData.portals.length);
@@ -724,8 +724,8 @@
                         if (halo.parentNode) halo.parentNode.removeChild(halo);
 
                         // Restore existing portal halos
-                        for (let portalhalo of portalhalos) {
-                            portalhalo.style.display = '';
+                        for (let haloToChange of halos) {
+                            haloToChange.style.display = '';
                         }
 
                     }, 5000);
