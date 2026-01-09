@@ -194,6 +194,14 @@
                 width: 80px;
                 text-align: center;
             }
+
+        /* explosion canvas - placed absolutely and removed after animation */
+        .explosion-canvas {
+            position: absolute;
+            pointer-events: none;
+            z-index: 300000;
+            will-change: transform, opacity;
+        }
     </style>
 </head>
 <body>
@@ -407,6 +415,130 @@
             });
         }
 
+        // play a 2s explosion animation centered at the given original-scale offsets (offsetX, offsetY)
+        // returns a Promise that resolves when animation completes
+        function playExplosionAtOffset(offsetX, offsetY) {
+            return new Promise(resolve => {
+                const img = document.getElementById('selectedpitch');
+                const naturalW = img.naturalWidth || img.width || 1;
+                const naturalH = img.naturalHeight || img.height || 1;
+                const displayedW = img.width;
+                const displayedH = img.height;
+                const scale = displayedW / naturalW;
+
+                // compute center in page coordinates
+                const centerX = img.offsetLeft + (offsetX || 0) * scale;
+                const centerY = img.offsetTop + (offsetY || 0) * scale;
+
+                // display size in CSS pixels
+                const displaySize = 180; // visual size of canvas in CSS px
+                const half = displaySize / 2;
+
+                const canvas = document.createElement('canvas');
+                canvas.className = 'explosion-canvas';
+                canvas.style.width = displaySize + 'px';
+                canvas.style.height = displaySize + 'px';
+                canvas.style.left = (centerX - half) + 'px';
+                canvas.style.top = (centerY - half) + 'px';
+
+                // high DPI handling
+                const dpr = Math.max(1, window.devicePixelRatio || 1);
+                canvas.width = Math.round(displaySize * dpr);
+                canvas.height = Math.round(displaySize * dpr);
+
+                document.body.appendChild(canvas);
+                const ctx = canvas.getContext('2d');
+                ctx.scale(dpr, dpr);
+
+                // particle setup
+                const particles = [];
+                const particleCount = 28;
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 30 + Math.random() * 140; // px total travel
+                    const size = 2 + Math.random() * 8;
+                    const hue = 20 + Math.random() * 40; // orange-yellow
+                    const color = `hsl(${hue}, 90%, ${45 + Math.random() * 20}%)`;
+                    particles.push({ angle, speed, size, color });
+                }
+
+                const duration = 2000;
+                const start = performance.now();
+
+                function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+                function drawFrame(now) {
+                    const t = Math.min(1, (now - start) / duration);
+                    const e = easeOutCubic(t);
+
+                    // clear
+                    ctx.clearRect(0, 0, displaySize, displaySize);
+
+                    // central flash
+                    const flashMax = displaySize * 0.5;
+                    const flashR = flashMax * e;
+                    const flashAlpha = 1 - t;
+                    if (flashAlpha > 0) {
+                        const grad = ctx.createRadialGradient(displaySize / 2, displaySize / 2, 0, displaySize / 2, displaySize / 2, flashR);
+                        grad.addColorStop(0, `rgba(255,250,200,${0.95 * flashAlpha})`);
+                        grad.addColorStop(0.4, `rgba(255,180,60,${0.6 * flashAlpha})`);
+                        grad.addColorStop(1, `rgba(255,80,20,${0.0})`);
+                        ctx.fillStyle = grad;
+                        ctx.beginPath();
+                        ctx.arc(displaySize / 2, displaySize / 2, flashR, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // particles
+                    for (const p of particles) {
+                        const dist = p.speed * e;
+                        const x = displaySize / 2 + Math.cos(p.angle) * dist;
+                        const y = displaySize / 2 + Math.sin(p.angle) * dist;
+                        const s = p.size * (1 - t * 0.9);
+                        const alpha = (1 - t) * 0.95;
+                        ctx.fillStyle = p.color;
+                        ctx.globalAlpha = alpha;
+                        ctx.beginPath();
+                        ctx.ellipse(x, y, s, s * 0.9, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    }
+
+                    // debris sparks (small bright dots)
+                    const sparks = Math.floor(6 + 10 * t);
+                    for (let i = 0; i < sparks; i++) {
+                        const ang = Math.random() * Math.PI * 2;
+                        const rr = (displaySize * 0.1 + Math.random() * displaySize * 0.4) * e;
+                        const x = displaySize / 2 + Math.cos(ang) * rr;
+                        const y = displaySize / 2 + Math.sin(ang) * rr;
+                        ctx.fillStyle = `rgba(255, ${120 + Math.floor(Math.random() * 80)}, 40, ${0.8 * (1 - t)})`;
+                        const rs = 1 + Math.random() * 3;
+                        ctx.fillRect(x - rs / 2, y - rs / 2, rs, rs);
+                    }
+
+                    // optional smoke ring (fades in)
+                    const smokeAlpha = Math.max(0, (t - 0.3) / 0.7) * (1 - t);
+                    if (smokeAlpha > 0.01) {
+                        ctx.strokeStyle = `rgba(80,80,80,${0.35 * smokeAlpha})`;
+                        ctx.lineWidth = 6 * (0.5 + e);
+                        ctx.beginPath();
+                        ctx.arc(displaySize / 2, displaySize / 2, displaySize * 0.25 + displaySize * 0.5 * e, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    if (t < 1) {
+                        requestAnimationFrame(drawFrame);
+                    } else {
+                        // remove canvas and resolve
+                        if (canvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
+                        resolve();
+                    }
+                }
+
+                requestAnimationFrame(drawFrame);
+            });
+        }
+
         document.addEventListener('keydown', async (event) => {
             // navigation & fullscreen (unchanged)
             if (event.key === 'ArrowRight') {
@@ -610,8 +742,6 @@
                     return;
                 }
 
-                //const input = await showInputModal('Enter chest number to open', '1');
-
                 // For each unopened chest, add a button
                 var chestButtons = Object.keys(chestState).filter(n => {
                     const st = chestState[n];
@@ -651,26 +781,17 @@
 
                 // Reveal whether assignedBall present
                 if (st.assignedBall !== null) {
-                    // create a visible colored ball indicator near chest label
-                    //const indicator = document.createElement('div');
-                    //indicator.className = 'ball-indicator ball-' + (st.assignedBall);
-                    //indicator.textContent = String(st.assignedBall);
-                    //document.body.appendChild(indicator);
-                    //_overlays.push(indicator);
-                    //st.indicatorEl = indicator;
-                    //positionElementOverImage(indicator, (st.data.offsetX || 0) + 12, (st.data.offsetY || 0) - 12);
-
                     await showChoiceModal('Chest #' + chosen + ' opened — it CONTAINS A BALL!', [
                         { label: 'OK (x)', value: null, classes: '' }
                     ]);
-
-                    //alert('Chest #' + chosen + ' opened — it CONTAINS ball #' + st.assignedBall + '.');
                 } else {
-                    //alert('Chest #' + chosen + ' opened — it does NOT contain a ball.');
-
-                    await showChoiceModal('Chest #' + chosen + ' opened — it EXPLODES!', [
-                        { label: 'OK (x)', value: null, classes: '' }
-                    ]);
+                    // play 2s explosion centered on chest instead of modal
+                    const ox = (st.data && typeof st.data.offsetX === 'number') ? st.data.offsetX : (st.data && st.data.col ? st.data.col : 0);
+                    const oy = (st.data && typeof st.data.offsetY === 'number') ? st.data.offsetY : (st.data && st.data.row ? st.data.row : 0);
+                    // If offsets are not present, try to compute from grid col/row (assume one cell)
+                    // If offsets are grid coordinates, convert to pixel offsets using metadata assumptions is not trivial here.
+                    // For best results ensure map JSON includes offsetX/offsetY for chests. Fallback to (0,0).
+                    await playExplosionAtOffset(ox, oy);
                 }
 
                 return;
