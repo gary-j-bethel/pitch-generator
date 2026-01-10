@@ -64,14 +64,12 @@
 
         /* image container palette (static) */
         #image-container {
-            display: flex;
             gap: 8px;
             align-items: center;
             margin-bottom: 12px;
         }
 
             #image-container img {
-                position: relative;
                 cursor: pointer;
                 /* displayed at 5% of original — width set from JS based on naturalWidth */
                 height: auto;
@@ -134,18 +132,6 @@
 </head>
 <body>
 
-    <div id="image-container">
-        <img class="ontop portal" src="Tiles/portal.png" alt="portal" />
-        <img class="ontop chest" src="Tiles/chestb.png" alt="chest" />
-        <img class="ontop" src="Tiles/wall-0.png" alt="Wall" />
-        <img src="Tiles/corridora-0.jpg" alt="corridor a" />
-        <img src="Tiles/tcorridor3rd-0.png" alt="3rd edition T shaped corridor" />
-        <img src="Tiles/endzonea-0.jpg" alt="end zone" />
-        <img src="Tiles/4x4a.jpg" alt="4 by 4 room" />
-        <img src="Tiles/4x8a3rd-0.png" alt="3rd edition 4 by 8 room with chasm" />
-
-    </div>
-
     <form id="sizeForm" onsubmit="return false;">
         <label for="mapName">
             Map Name
@@ -173,6 +159,47 @@
         <button id="saveCombinedBtn" type="button">Save Map</button>
 
     </form>
+
+    <div id="image-container">
+        <img class="ontop portal" src="Tiles/portal.png" alt="portal" />
+        <img class="ontop chest" src="Tiles/chestb.png" alt="chest" />
+        <img class="ontop" src="Tiles/wall-0.png" alt="Wall" />
+        <img class="ontop" src="Tiles/wall-90.png" alt="Wall" />
+        <img class="ontop" src="Tiles/spikepit.png" alt="Spike pit" />
+        <img src="Tiles/dugouta-270.jpg" alt="Dugout" />
+        <img src="Tiles/corner-0.png" alt="Corner corridor" />
+        <img src="Tiles/corridora-90.jpg" alt="corridor a" />
+        <img src="Tiles/corridora-3rd-90.jpg" alt="corridor a" />
+        <img src="Tiles/corridorb-3rd-90.jpg" alt="corridor b" />
+        <img src="Tiles/tcorridor3rd-0.png" alt="3rd edition T shaped corridor" />
+        <br />
+        <img src="Tiles/endzonea-0.jpg" alt="end zone" />
+        <img src="Tiles/endzoneb-0.png" alt="end zone" />
+        <img src="Tiles/endzonec-0.png" alt="end zone" />
+        <img src="Tiles/endzoned-0.png" alt="end zone" />
+        <img src="Tiles/endzonea-3rd-0.jpg" alt="end zone" />
+        <img src="Tiles/endzoneb-3rd-0.jpg" alt="end zone" />
+        <br />
+        <img src="Tiles/4x4a.jpg" alt="4 by 4 room" />
+        <img src="Tiles/4x4b.jpg" alt="4 by 4 room" />
+        <img src="Tiles/4x4c.png" alt="4 by 4 room" />
+        <img src="Tiles/4x4d.png" alt="4 by 4 room" />
+        <img src="Tiles/4x4e.png" alt="4 by 4 room" />
+        <img src="Tiles/4x4f.png" alt="4 by 4 room" />
+        <img src="Tiles/4x4g.png" alt="4 by 4 room" />
+        <img src="Tiles/4x4h.png" alt="4 by 4 room" />
+        <img src="Tiles/4x4a-3rd.jpg" alt="4 by 4 room" />
+        <img src="Tiles/4x4b-3rd.jpg" alt="4 by 4 room" />
+        <img src="Tiles/4x4c-3rd.jpg" alt="4 by 4 room" />
+        <br />
+        <img src="Tiles/4x8a3rd-90.png" alt="3rd edition 4 by 8 room with chasm" />
+        <img src="Tiles/4x8b-3rd-90.jpg" alt="3rd edition 4 by 8 room with statue" />
+        <img src="Tiles/4x8a-90.png" alt="4 by 8 room" />
+        <img src="Tiles/4x8b-90.png" alt="4 by 8 room" />
+        <img src="Tiles/4x8c-90.png" alt="4 by 8 room" />
+        <img src="Tiles/4x8d-90.png" alt="4 by 8 room" />
+
+    </div>
 
     <div id="grid" aria-live="polite" role="region" aria-label="Generated grid"></div>
 
@@ -888,7 +915,7 @@
             } catch (e) { /* ignore */ }
         });
 
-        // ---------------- Export / Import JSON of image grid refs ----------------        
+        // ---------------- Export / Import JSON of image grid refs ----------------
 
         chooseFileBtn.addEventListener('click', () => loadInput.click());
 
