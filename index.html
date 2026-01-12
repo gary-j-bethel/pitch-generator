@@ -742,11 +742,18 @@
                     return;
                 }
 
-                // For each unopened chest, add a button
-                var chestButtons = Object.keys(chestState).filter(n => {
+                // Unopened chests
+                unopenedChests = Object.keys(chestState).filter(n => {
                     const st = chestState[n];
                     return st && !st.opened;
-                }).map(n => {
+                });
+
+                if (unopenedChests.length == 0) {
+                    return;
+                }
+
+                // For each unopened chest, add a button
+                var chestButtons = unopenedChests.map(n => {
                     return { label: String(n), value: n, classes: '' };
                 })
 
