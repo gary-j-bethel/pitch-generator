@@ -209,6 +209,8 @@
     <script>
         var mapData = null;
 
+        let portalHighlighted = false;
+
         const images = [
             "Pitches/Symmetric-1.png",
             "Pitches/Symmetric-2.png",
@@ -476,7 +478,9 @@
 
                     // central flash
                     const flashMax = displaySize * 0.5;
-                    const flashR = flashMax * e;
+                    let flashR = flashMax * e;
+                    if (flashR < 0) flashR = 0;
+
                     const flashAlpha = 1 - t;
                     if (flashAlpha > 0) {
                         const grad = ctx.createRadialGradient(displaySize / 2, displaySize / 2, 0, displaySize / 2, displaySize / 2, flashR);
@@ -700,7 +704,12 @@
 
             // 'p' unchanged — highlight random portal
             if (event.key === 'p') {
+                if (portalHighlighted)
+                    return; // prevent multiple highlights at once;
+
                 if (mapData && mapData.portals && mapData.portals.length > 0) {
+
+                    portalHighlighted = true;
 
                     // Hide existing halos temporarily
                     let halos = document.querySelectorAll('.pulse-halo,.pulse-halo-yellow');
@@ -722,6 +731,8 @@
                     document.body.appendChild(halo);
                     setTimeout(() => {
                         if (halo.parentNode) halo.parentNode.removeChild(halo);
+
+                        portalHighlighted = false;
 
                         // Restore existing portal halos
                         for (let haloToChange of halos) {
@@ -782,7 +793,7 @@
                 if (st.haloEl && st.haloEl.parentNode) {
                     st.haloEl.parentNode.removeChild(st.haloEl);
                 }
-                
+
                 // Reveal whether assignedBall present
                 if (st.assignedBall !== null) {
                     st.labelEl.textContent = '✔';
