@@ -202,9 +202,19 @@
             z-index: 300000;
             will-change: transform, opacity;
         }
+
+        #mapname {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            z-index: 1000;
+            background-color: black;
+            color: white;
+        }
     </style>
 </head>
 <body>
+    <span id="mapname">Map Name</span>
     <img id="selectedpitch" src="" style="max-width:100%; max-height:100%;" />
     <script>
         var mapData = null;
@@ -549,15 +559,73 @@
             });
         }
 
+        async function getMapData() {
+            mapData = null;
+
+            try {
+                const resp = await fetch(images[currentIndex]);
+                const blob = await resp.blob();
+                const reader = new FileReader();
+                reader.readAsArrayBuffer(blob);
+                reader.onload = async () => {
+                    const textChunks = [];
+                    const data = reader.result;
+                    let offset = 8; // Skip PNG signature
+                    while (offset + 8 <= data.byteLength) {
+                        const length = new DataView(data, offset, 4).getUint32(0);
+                        const type = String.fromCharCode(
+                            new DataView(data, offset + 4, 1).getUint8(0),
+                            new DataView(data, offset + 5, 1).getUint8(0),
+                            new DataView(data, offset + 6, 1).getUint8(0),
+                            new DataView(data, offset + 7, 1).getUint8(0)
+                        );
+                        if (type === 'tEXt') {
+                            const textData = new Uint8Array(data, offset + 8, length);
+                            const textString = new TextDecoder().decode(textData);
+                            textChunks.push(textString);
+                        }
+                        offset += 12 + length; // Move to the next chunk (length + type + data + crc)
+                    }
+                    const mapJSONChunk = textChunks.find(chunk => chunk.startsWith('mapJSON'));
+                    if (!mapJSONChunk) {
+                        alert('No mapJSON chunk found in image.');
+                        return;
+                    }
+
+                    // mapJSON chunk may be "mapJSON\0{...}" or "mapJSON{...}" depending on earlier writer.
+                    // strip leading "mapJSON" and optional null
+                    let jsonString = mapJSONChunk.substring(7);
+                    if (jsonString.charAt(0) === '\0') jsonString = jsonString.substring(1);
+                    try {
+                        mapData = JSON.parse(jsonString)[0];
+                    } catch (e) {
+                        alert('Failed to parse map JSON from image: ' + e.message);
+                        return;
+                    }
+
+                    // We now have mapData.
+                    document.getElementById('mapname').textContent = mapData.mapName || 'Unnamed Map';
+
+                    return;
+                }
+            }
+            catch (err) {
+                console.error(err);
+                alert('Failed to load image or map JSON: ' + (err && err.message ? err.message : 'unknown error'));
+            }
+        }
+
         document.addEventListener('keydown', async (event) => {
             // navigation & fullscreen (unchanged)
             if (event.key === 'ArrowRight') {
                 currentIndex = (currentIndex + 1) % images.length;
                 showImage(currentIndex);
+                await getMapData();
                 return;
             } else if (event.key === 'ArrowLeft') {
                 currentIndex = (currentIndex - 1 + images.length) % images.length;
                 showImage(currentIndex);
+                await getMapData();
                 return;
             } else if (event.key === 'f') {
                 if (!document.fullscreenElement) {
@@ -573,133 +641,91 @@
             // If a modal is open, modal handlers already stop propagation via showChoiceModal/showInputModal key listeners.
             // 'g' = load mapJSON and set up overlays + chest numbering + ball assignment
             if (event.key === 'g') {
-                // load PNG, extract mapJSON as before
+
                 clearOverlays();
-                mapData = null;
 
                 try {
-                    const resp = await fetch(images[currentIndex]);
-                    const blob = await resp.blob();
-                    const reader = new FileReader();
-                    reader.readAsArrayBuffer(blob);
-                    reader.onload = async () => {
-                        const textChunks = [];
-                        const data = reader.result;
-                        let offset = 8; // Skip PNG signature
-                        while (offset + 8 <= data.byteLength) {
-                            const length = new DataView(data, offset, 4).getUint32(0);
-                            const type = String.fromCharCode(
-                                new DataView(data, offset + 4, 1).getUint8(0),
-                                new DataView(data, offset + 5, 1).getUint8(0),
-                                new DataView(data, offset + 6, 1).getUint8(0),
-                                new DataView(data, offset + 7, 1).getUint8(0)
-                            );
-                            if (type === 'tEXt') {
-                                const textData = new Uint8Array(data, offset + 8, length);
-                                const textString = new TextDecoder().decode(textData);
-                                textChunks.push(textString);
-                            }
-                            offset += 12 + length; // Move to the next chunk (length + type + data + crc)
+                    // Prepare overlays.
+                    const img = document.getElementById('selectedpitch');
+
+                    // Loop through each portal in mapData.portals
+                    Array.from(mapData.portals || []).forEach(portal => {
+                        const halo = document.createElement('div');
+                        halo.style.position = 'absolute';
+                        halo.style.borderRadius = '50%';
+                        halo.style.width = '50px';
+                        halo.style.height = '50px';
+                        // positionElementOverImage will handle scaling when naturalWidth available
+                        positionElementOverImage(halo, portal.offsetX || 0, portal.offsetY || 0);
+                        halo.classList.add('pulse-halo');
+                        document.body.appendChild(halo);
+                        _overlays.push(halo);
+                    });
+
+                    // Ask user whether to use 1 or 3 balls via modal (buttons '1','3','Cancel')
+                    const choice = await showChoiceModal('Assign balls to chests — choose 1 or 3', [
+                        { label: '1', value: 1, classes: '' },
+                        { label: '3', value: 3, classes: '' },
+                        { label: 'Cancel (x)', value: null, classes: '' }
+                    ]);
+                    let balls = 0;
+                    if (choice === null) {
+                        balls = 0; // user cancelled
+                    } else {
+                        balls = Number(choice) || 0;
+                    }
+
+                    // First, number all chests 1..N and render labels and halo visuals.
+                    const chests = Array.isArray(mapData.chests) ? mapData.chests : [];
+                    // cleanup any existing chestState
+                    Object.keys(chestState).forEach(k => delete chestState[k]);
+
+                    chests.forEach((chest, idx) => {
+                        const number = idx + 1;
+                        // halo
+                        const halo = document.createElement('div');
+                        halo.style.position = 'absolute';
+                        halo.style.borderRadius = '50%';
+                        halo.style.width = '50px';
+                        halo.style.height = '50px';
+                        positionElementOverImage(halo, chest.offsetX || 0, chest.offsetY || 0);
+                        halo.classList.add('pulse-halo-yellow');
+                        document.body.appendChild(halo);
+                        _overlays.push(halo);
+
+                        // label shows chest number
+                        const label = document.createElement('div');
+                        label.className = 'chest-label';
+                        label.textContent = String(number);
+                        positionElementOverImage(label, chest.offsetX || 0, chest.offsetY || 0);
+                        document.body.appendChild(label);
+                        _overlays.push(label);
+
+                        // store state
+                        chestState[number] = {
+                            data: chest,
+                            haloEl: halo,
+                            labelEl: label,
+                            assignedBall: null,
+                            opened: false,
+                            indicatorEl: null
+                        };
+                    });
+
+                    // Assign balls (if chosen) to random distinct chests
+                    if (balls > 0 && chests.length > 0) {
+                        const chestNumbers = Object.keys(chestState).map(n => parseInt(n, 10));
+                        shuffleArray(chestNumbers);
+                        const assignCount = Math.min(balls, chestNumbers.length);
+                        for (let i = 0; i < assignCount; i++) {
+                            const chestNum = chestNumbers[i];
+                            // assign ball id (1..assignCount)
+                            chestState[chestNum].assignedBall = i + 1;
+                            // do not reveal indicator until opened
                         }
-                        const mapJSONChunk = textChunks.find(chunk => chunk.startsWith('mapJSON'));
-                        if (!mapJSONChunk) {
-                            alert('No mapJSON chunk found in image.');
-                            return;
-                        }
+                    }
 
-                        // mapJSON chunk may be "mapJSON\0{...}" or "mapJSON{...}" depending on earlier writer.
-                        // strip leading "mapJSON" and optional null
-                        let jsonString = mapJSONChunk.substring(7);
-                        if (jsonString.charAt(0) === '\0') jsonString = jsonString.substring(1);
-                        try {
-                            mapData = JSON.parse(jsonString)[0];
-                        } catch (e) {
-                            alert('Failed to parse map JSON from image: ' + e.message);
-                            return;
-                        }
-
-                        // We now have mapData. Prepare overlays.
-                        const img = document.getElementById('selectedpitch');
-
-                        // Loop through each portal in mapData.portals
-                        Array.from(mapData.portals || []).forEach(portal => {
-                            const halo = document.createElement('div');
-                            halo.style.position = 'absolute';
-                            halo.style.borderRadius = '50%';
-                            halo.style.width = '50px';
-                            halo.style.height = '50px';
-                            // positionElementOverImage will handle scaling when naturalWidth available
-                            positionElementOverImage(halo, portal.offsetX || 0, portal.offsetY || 0);
-                            halo.classList.add('pulse-halo');
-                            document.body.appendChild(halo);
-                            _overlays.push(halo);
-                        });
-
-                        // Ask user whether to use 1 or 3 balls via modal (buttons '1','3','Cancel')
-                        const choice = await showChoiceModal('Assign balls to chests — choose 1 or 3', [
-                            { label: '1', value: 1, classes: '' },
-                            { label: '3', value: 3, classes: '' },
-                            { label: 'Cancel (x)', value: null, classes: '' }
-                        ]);
-                        let balls = 0;
-                        if (choice === null) {
-                            balls = 0; // user cancelled
-                        } else {
-                            balls = Number(choice) || 0;
-                        }
-
-                        // First, number all chests 1..N and render labels and halo visuals.
-                        const chests = Array.isArray(mapData.chests) ? mapData.chests : [];
-                        // cleanup any existing chestState
-                        Object.keys(chestState).forEach(k => delete chestState[k]);
-
-                        chests.forEach((chest, idx) => {
-                            const number = idx + 1;
-                            // halo
-                            const halo = document.createElement('div');
-                            halo.style.position = 'absolute';
-                            halo.style.borderRadius = '50%';
-                            halo.style.width = '50px';
-                            halo.style.height = '50px';
-                            positionElementOverImage(halo, chest.offsetX || 0, chest.offsetY || 0);
-                            halo.classList.add('pulse-halo-yellow');
-                            document.body.appendChild(halo);
-                            _overlays.push(halo);
-
-                            // label shows chest number
-                            const label = document.createElement('div');
-                            label.className = 'chest-label';
-                            label.textContent = String(number);
-                            positionElementOverImage(label, chest.offsetX || 0, chest.offsetY || 0);
-                            document.body.appendChild(label);
-                            _overlays.push(label);
-
-                            // store state
-                            chestState[number] = {
-                                data: chest,
-                                haloEl: halo,
-                                labelEl: label,
-                                assignedBall: null,
-                                opened: false,
-                                indicatorEl: null
-                            };
-                        });
-
-                        // Assign balls (if chosen) to random distinct chests
-                        if (balls > 0 && chests.length > 0) {
-                            const chestNumbers = Object.keys(chestState).map(n => parseInt(n, 10));
-                            shuffleArray(chestNumbers);
-                            const assignCount = Math.min(balls, chestNumbers.length);
-                            for (let i = 0; i < assignCount; i++) {
-                                const chestNum = chestNumbers[i];
-                                // assign ball id (1..assignCount)
-                                chestState[chestNum].assignedBall = i + 1;
-                                // do not reveal indicator until opened
-                            }
-                        }
-
-                        //alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
-                    };
+                    //alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
                 } catch (err) {
                     console.error(err);
                     alert('Failed to load image or map JSON: ' + (err && err.message ? err.message : 'unknown error'));
@@ -826,6 +852,8 @@
 
         // Initial display
         showImage(currentIndex);
+
+        getMapData();
     </script>
 </body>
 </html>
