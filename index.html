@@ -220,6 +220,7 @@
         var mapData = null;
 
         let portalHighlighted = false;
+        let gameInProgress = false;
 
         const images = [
             "Pitches/Symmetric-1.png",
@@ -617,12 +618,12 @@
 
         document.addEventListener('keydown', async (event) => {
             // navigation & fullscreen (unchanged)
-            if (event.key === 'ArrowRight') {
+            if (event.key === 'ArrowRight' && !gameInProgress) {
                 currentIndex = (currentIndex + 1) % images.length;
                 showImage(currentIndex);
                 await getMapData();
                 return;
-            } else if (event.key === 'ArrowLeft') {
+            } else if (event.key === 'ArrowLeft' && !gameInProgress) {
                 currentIndex = (currentIndex - 1 + images.length) % images.length;
                 showImage(currentIndex);
                 await getMapData();
@@ -640,7 +641,7 @@
 
             // If a modal is open, modal handlers already stop propagation via showChoiceModal/showInputModal key listeners.
             // 'g' = load mapJSON and set up overlays + chest numbering + ball assignment
-            if (event.key === 'g') {
+            if (event.key === 'g' && !gameInProgress) {
 
                 clearOverlays();
 
@@ -725,6 +726,8 @@
                         }
                     }
 
+                    gameInProgress = true;
+
                     //alert(`Loaded map data. ${chests.length} chests found. ${(balls > 0) ? `${Math.min(balls, chests.length)} ball(s) assigned.` : 'No balls assigned.'}`);
                 } catch (err) {
                     console.error(err);
@@ -735,7 +738,7 @@
             } // end 'g' key
 
             // 'p' unchanged — highlight random portal
-            if (event.key === 'p') {
+            if (event.key === 'p' && gameInProgress) {
                 if (portalHighlighted)
                     return; // prevent multiple highlights at once;
 
@@ -779,7 +782,7 @@
             }
 
             // 'c' — open chest: show input modal to ask for chest number
-            if (event.key === 'c') {
+            if (event.key === 'c' && gameInProgress) {
                 if (!mapData || !mapData.chests || mapData.chests.length === 0) {
                     alert('No chest data loaded. Press g to load map data first.');
                     return;
