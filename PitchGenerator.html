@@ -1258,15 +1258,47 @@
                 ctx.drawImage(img, x, y, origW, origH);
             }
 
-            // create PNG blob
-            canvas.toBlob(async (blob) => {
+            // Now scale the combined original canvas to 1920x1080 before saving.
+            const TARGET_W = 1920;
+            const TARGET_H = 1080;
+
+            const scaledCanvas = document.createElement('canvas');
+            scaledCanvas.width = TARGET_W;
+            scaledCanvas.height = TARGET_H;
+            const sctx = scaledCanvas.getContext('2d');
+            // use high quality scaling
+            sctx.imageSmoothingEnabled = true;
+            if ('imageSmoothingQuality' in sctx) sctx.imageSmoothingQuality = 'high';
+            // draw and scale original canvas into scaledCanvas
+            sctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, TARGET_W, TARGET_H);
+
+            // create PNG blob from the scaled canvas
+            scaledCanvas.toBlob(async (blob) => {
                 if (!blob) {
                     alert('Failed to create image.');
                     return;
                 }
 
-                // build metadata
-                var a1 = buildMetadata(originalCellSize);
+                // build metadata from original coordinates, then scale offsets to match the final image size
+                const originalMeta = buildMetadata(originalCellSize);
+
+                // compute scaling between original combined canvas and final saved image
+                const scaleX = TARGET_W / canvas.width;
+                const scaleY = TARGET_H / canvas.height;
+
+                // deep clone originalMeta so we don't mutate internal state
+                const scaledMeta = JSON.parse(JSON.stringify(originalMeta));
+
+                const scaleOffsets = (items) => {
+                    if (!Array.isArray(items)) return;
+                    items.forEach(it => {
+                        if (typeof it.offsetX === 'number') it.offsetX = Math.round(it.offsetX * scaleX);
+                        if (typeof it.offsetY === 'number') it.offsetY = Math.round(it.offsetY * scaleY);
+                    });
+                };
+
+                scaleOffsets(scaledMeta.portals);
+                scaleOffsets(scaledMeta.chests);
 
                 const payload = {
                     cols: gridCols,
@@ -1274,13 +1306,11 @@
                     refs: imageGridRefs
                 };
 
-                const metadata = [].concat(a1, payload);
-                // add mapName and grid refs for portals and chests as JSON in a tEXt chunk under keyword 'mapJSON'
-                const metadataJson = JSON.stringify(metadata);
+                // first element: scaled metadata (with offsets in final image pixels), second element: payload
+                const metadataArray = [scaledMeta, payload];
+                const metadataJson = JSON.stringify(metadataArray);
 
                 try {
-                    const j = JSON.stringify(imageGridRefs);
-
                     const withMeta = await addPngTextChunk(blob, 'mapJSON', metadataJson);
                     const url = URL.createObjectURL(withMeta);
                     const a = document.createElement('a');
