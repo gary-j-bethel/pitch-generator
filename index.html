@@ -218,6 +218,7 @@
     <img id="selectedpitch" src="" style="max-width:100%; max-height:100%;" />
     <script>
         var mapData = null;
+        var squareSize = null;
 
         let portalHighlighted = false;
         let gameInProgress = false;
@@ -607,6 +608,9 @@
                     // We now have mapData.
                     document.getElementById('mapname').textContent = mapData.mapName || 'Unnamed Map';
 
+                    // compute squareSize CSS value based on mapData.width and fixed 1920px image width
+                    squareSize = 1920 / mapData.width + 'px';
+
                     return;
                 }
             }
@@ -654,8 +658,8 @@
                         const halo = document.createElement('div');
                         halo.style.position = 'absolute';
                         halo.style.borderRadius = '50%';
-                        halo.style.width = '50px';
-                        halo.style.height = '50px';
+                        halo.style.width = squareSize;
+                        halo.style.height = squareSize;
                         // positionElementOverImage will handle scaling when naturalWidth available
                         positionElementOverImage(halo, portal.offsetX || 0, portal.offsetY || 0);
                         halo.classList.add('pulse-halo');
@@ -687,8 +691,8 @@
                         const halo = document.createElement('div');
                         halo.style.position = 'absolute';
                         halo.style.borderRadius = '50%';
-                        halo.style.width = '50px';
-                        halo.style.height = '50px';
+                        halo.style.width = squareSize;
+                        halo.style.height = squareSize;
                         positionElementOverImage(halo, chest.offsetX || 0, chest.offsetY || 0);
                         halo.classList.add('pulse-halo-yellow');
                         document.body.appendChild(halo);
@@ -758,8 +762,8 @@
                     const halo = document.createElement('div');
                     halo.style.position = 'absolute';
                     halo.style.borderRadius = '50%';
-                    halo.style.width = '50px';
-                    halo.style.height = '50px';
+                    halo.style.width = squareSize;
+                    halo.style.height = squareSize;
                     // positionElementOverImage will handle scaling/position
                     positionElementOverImage(halo, portal.offsetX || 0, portal.offsetY || 0);
                     halo.classList.add('pulse-halo-red');
